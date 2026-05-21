@@ -19,13 +19,69 @@ def init_db() -> None:
     cur.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY);
-        CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT, created_at TEXT);
-        CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, session_id TEXT, target TEXT, type TEXT, topic TEXT);
-        CREATE TABLE IF NOT EXISTS answers (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, card_id TEXT, user_answer TEXT, score INTEGER, created_at TEXT);
-        CREATE TABLE IF NOT EXISTS known_items (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, type TEXT, text TEXT, normalized_text TEXT, source_card_id TEXT, strength INTEGER DEFAULT 1, created_at TEXT, last_seen_at TEXT);
-        CREATE TABLE IF NOT EXISTS weak_items (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, type TEXT, text TEXT, mistake_example TEXT, correction TEXT, explanation TEXT, wrong_count INTEGER DEFAULT 0, right_count INTEGER DEFAULT 0, next_review_at TEXT, priority TEXT);
-        CREATE TABLE IF NOT EXISTS round_summaries (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, summary_json TEXT, created_at TEXT);
-        CREATE TABLE IF NOT EXISTS review_items (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, item_type TEXT, text TEXT, prompt TEXT, next_review_at TEXT, status TEXT);
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            topic TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS cards (
+            id TEXT PRIMARY KEY,
+            session_id TEXT,
+            target TEXT,
+            type TEXT,
+            topic TEXT,
+            card_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS answers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            card_id TEXT,
+            user_answer TEXT,
+            score INTEGER,
+            evaluation_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS round_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            summary_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS known_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            type TEXT,
+            text TEXT,
+            normalized_text TEXT,
+            source_card_id TEXT,
+            strength INTEGER DEFAULT 1,
+            created_at TEXT,
+            last_seen_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS weak_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            type TEXT,
+            text TEXT,
+            mistake_example TEXT,
+            correction TEXT,
+            explanation TEXT,
+            wrong_count INTEGER DEFAULT 0,
+            right_count INTEGER DEFAULT 0,
+            next_review_at TEXT,
+            priority TEXT
+        );
+        CREATE TABLE IF NOT EXISTS review_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            item_type TEXT,
+            text TEXT,
+            prompt TEXT,
+            next_review_at TEXT,
+            status TEXT
+        );
         """
     )
     conn.commit()
@@ -37,7 +93,8 @@ def normalize(text: str) -> str:
 
 
 def get_memory(user_id: str) -> dict:
-    conn = get_conn(); cur = conn.cursor()
+    conn = get_conn()
+    cur = conn.cursor()
     known = [dict(r) for r in cur.execute("SELECT * FROM known_items WHERE user_id=?", (user_id,)).fetchall()]
     weak = [dict(r) for r in cur.execute("SELECT * FROM weak_items WHERE user_id=?", (user_id,)).fetchall()]
     due = [dict(r) for r in cur.execute("SELECT * FROM review_items WHERE user_id=? AND next_review_at <= ?", (user_id, datetime.utcnow().isoformat())).fetchall()]
@@ -53,12 +110,53 @@ def get_memory(user_id: str) -> dict:
 
 
 def save_known(user_id: str, item_type: str, text: str, source_card_id: str) -> None:
-    conn = get_conn(); cur = conn.cursor(); now = datetime.utcnow().isoformat()
-    cur.execute("INSERT INTO known_items (user_id,type,text,normalized_text,source_card_id,created_at,last_seen_at) VALUES (?,?,?,?,?,?,?)", (user_id,item_type,text,normalize(text),source_card_id,now,now))
-    conn.commit(); conn.close()
+    conn = get_conn()
+    cur = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    cur.execute(
+        "INSERT INTO known_items (user_id,type,text,normalized_text,source_card_id,strength,created_at,last_seen_at) VALUES (?,?,?,?,?,?,?,?)",
+        (user_id, item_type, text, normalize(text), source_card_id, 1, now, now),
+    )
+    conn.commit()
+    conn.close()
 
 
 def save_review(user_id: str, item_type: str, text: str, prompt: str, days: int = 1) -> None:
-    conn = get_conn(); cur = conn.cursor()
-    cur.execute("INSERT INTO review_items (user_id,item_type,text,prompt,next_review_at,status) VALUES (?,?,?,?,?,?)", (user_id,item_type,text,prompt,(datetime.utcnow()+timedelta(days=days)).isoformat(),"due"))
-    conn.commit(); conn.close()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO review_items (user_id,item_type,text,prompt,next_review_at,status) VALUES (?,?,?,?,?,?)",
+        (user_id, item_type, text, prompt, (datetime.utcnow() + timedelta(days=days)).isoformat(), "due"),
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_weak_item(
+    user_id: str,
+    item_type: str,
+    text: str,
+    mistake_example: str,
+    correction: str,
+    explanation: str,
+    priority: str,
+) -> None:
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO weak_items (user_id,type,text,mistake_example,correction,explanation,wrong_count,right_count,next_review_at,priority) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            user_id,
+            item_type,
+            text,
+            mistake_example,
+            correction,
+            explanation,
+            1,
+            0,
+            (datetime.utcnow() + timedelta(days=1)).isoformat(),
+            priority,
+        ),
+    )
+    conn.commit()
+    conn.close()

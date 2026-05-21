@@ -1,24 +1,25 @@
-CARD_GENERATION_PROMPT = """
-You are an English learning agent.
+from __future__ import annotations
 
-The user can often understand English, but cannot actively use expressions.
+import json
 
-Your job:
-Find useful reference sentences and convert them into active transfer cards.
 
-For each card:
-- Use one original reference sentence from searched material.
-- Extract one useful phrase/pattern/grammar/chunk.
-- Convert it into a reusable target.
-- Ask a different Chinese prompt using the same target.
-- Do not ask the user to repeat the original sentence.
-- The Chinese prompt must force transfer to a new context.
-- Return JSON only.
-
-Avoid:
-- long worksheets
-- vocabulary lists
-- too many explanations
-- passive study notes
-- repeating known targets
-""".strip()
+def build_card_generation_prompt(topic: str, level: str, search_results: list[dict], memory: dict) -> str:
+    return (
+        "You are an English learning agent.\n\n"
+        "The user can often understand English, but cannot actively use expressions.\n"
+        "Your job: convert searched English references into active transfer cards.\n\n"
+        f"Topic: {topic}\n"
+        f"Level: {level}\n"
+        f"SearchResults(JSON): {json.dumps(search_results, ensure_ascii=False)}\n"
+        f"KnownMemoryToAvoid(JSON): {json.dumps({'knownTopics': memory.get('knownTopics', []), 'knownPatterns': memory.get('knownPatterns', []), 'knownChunks': memory.get('knownChunks', [])}, ensure_ascii=False)}\n"
+        f"WeakMemoryToPreferIfNatural(JSON): {json.dumps({'weakGrammarPoints': memory.get('weakGrammarPoints', []), 'weakPatterns': memory.get('weakPatterns', [])}, ensure_ascii=False)}\n\n"
+        "Rules:\n"
+        "- Generate 1 to 10 learning cards based on learning value only.\n"
+        "- Each card teaches exactly one Pattern, Grammar, or Chunk.\n"
+        "- Each card must use one original reference sentence from search material.\n"
+        "- Extract one reusable target from that reference.\n"
+        "- Ask a DIFFERENT Chinese transfer prompt for each card.\n"
+        "- chinesePrompt must be clear for ask-first UI.\n"
+        "- No filler cards, no repeated known items.\n"
+        "- Return JSON only with shape: {\"cards\":[...LearningCard...]}.\n"
+    )
