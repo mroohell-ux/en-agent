@@ -7,12 +7,9 @@ from app.schemas import (
     CardSource,
     LearningCard,
     LearningCardSet,
-    MemoryDecision,
-    MemoryItemToSave,
     Mistake,
     MistakeToRemember,
     PracticedItem,
-    ReviewPlanItem,
     RoundSummary,
 )
 
@@ -100,11 +97,6 @@ class MockAiProvider(AiProvider):
                 naturalVersion="Consistent speaking and writing practice plays a key role in turning passive English into active use.",
                 advancedVersion="Sustained output practice plays a key role in converting passive competence into active command.",
                 mistakes=[Mistake(type="pattern", original="missing target expression", correction=f"use {target_phrase}", explanationChinese="需要迁移目标表达，而不只是表达意思。", reviewItem=target_phrase)],
-                memoryDecision=MemoryDecision(
-                    action="save_as_weak",
-                    reasonChinese="未成功迁移目标表达，需要作为弱项继续练。",
-                    itemsToSave=[MemoryItemToSave(type="PATTERN", text=target_phrase, priority="high")],
-                ),
                 nextAction="give_hint",
             )
 
@@ -125,11 +117,6 @@ class MockAiProvider(AiProvider):
                 naturalVersion="Output practice plays a key role in improving spoken English.",
                 advancedVersion="Consistent output practice plays a key role in developing fluent spoken English.",
                 mistakes=[Mistake(type="grammar", original="in improve", correction="in improving", explanationChinese="介词 in 后面要接动名词 improving。", reviewItem="preposition + verb-ing")],
-                memoryDecision=MemoryDecision(
-                    action="save_for_review",
-                    reasonChinese="目标表达已迁移，但语法点需要复习。",
-                    itemsToSave=[MemoryItemToSave(type="GRAMMAR", text="preposition + verb-ing", priority="medium")],
-                ),
                 nextAction="micro_lesson",
             )
 
@@ -149,22 +136,16 @@ class MockAiProvider(AiProvider):
             naturalVersion=user_answer,
             advancedVersion="Sustained output practice plays a key role in converting passive competence into active command.",
             mistakes=[],
-            memoryDecision=MemoryDecision(
-                action="mark_known" if excellent else "save_for_review",
-                reasonChinese="第一次高质量完成，可作为候选已掌握。" if excellent else "表现不错，但还需要一次换语境巩固。",
-                itemsToSave=[MemoryItemToSave(type="PATTERN", text=target_phrase, priority="low")],
-            ),
             nextAction="next_card" if excellent else "follow_up_question",
         )
 
     def summarize_round(self, prompt: str) -> RoundSummary:
         return RoundSummary(
-            practicedItems=[PracticedItem(cardTitle="Key role pattern", target="X plays a key role in Y.", score=85, memoryAction="save_for_review")],
+            practicedItems=[PracticedItem(cardTitle="Key role pattern", target="X plays a key role in Y.", score=85)],
             whatUserDidWell=["能够理解原句含义并尝试迁移结构"],
             mistakesToRemember=[MistakeToRemember(mistake="in improve", correction="in improving", ruleChinese="介词后动词用 -ing", example="plays a key role in improving")],
             weakItems=["preposition + verb-ing"],
-            knownItemsAdded=["a lack of + noun"],
-            reviewPlan=[ReviewPlanItem(item="preposition + verb-ing", type="Grammar", reviewAfterDays=1)]
+            suggestedNextPractice=["用本轮练过的表达各造一个新句子；这只是练习建议，不会写入长期复习计划。"],
         )
 
 

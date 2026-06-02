@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from app.db.memory_store import init_db
+from app.db.store import init_db
 from app.providers.ai import build_ai_provider
 from app.providers.search import build_search_provider
 from app.schemas import AnswerRequest, FinishRequest, StartRequest
@@ -37,13 +37,3 @@ def answer_agent(req: AnswerRequest):
 @app.post("/agent/finish")
 def finish_agent(req: FinishRequest):
     return agent_service.finish(req)
-
-
-@app.post("/cards/{card_id}/mark-known")
-def mark_known(card_id: str):
-    return agent_service.mark_known(card_id)
-
-
-@app.get("/memory")
-def read_memory(userId: str = "default-user"):
-    return agent_service.read_memory(userId)
