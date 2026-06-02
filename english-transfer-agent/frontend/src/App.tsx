@@ -4,7 +4,7 @@ import StudySession from './components/StudySession';
 import './styles.css';
 
 export default function App() {
-  const [topic, setTopic] = useState('random');
+  const [topic, setTopic] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [cards, setCards] = useState<LearningCard[]>([]);
@@ -15,7 +15,7 @@ export default function App() {
     setError('');
 
     try {
-      const data = await startAgent(topic);
+      const data = await startAgent(topic.trim() || 'random');
       setCards(data.cards);
       setSessionId(data.sessionId);
     } catch (err) {
@@ -42,8 +42,8 @@ export default function App() {
             className="topic-input"
             value={topic}
             onChange={(event) => setTopic(event.target.value)}
-            placeholder="random, technology, culture..."
-            aria-label="Practice topic"
+            placeholder="Optional topic, e.g. technology or culture"
+            aria-label="Optional practice topic"
           />
           <button className="primary-button" onClick={generate} disabled={loading}>
             {loading ? 'Preparing cards…' : cards.length ? 'Start another round' : 'Generate cards'}
