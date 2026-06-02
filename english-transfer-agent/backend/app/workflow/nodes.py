@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import HTTPException
 
@@ -9,6 +11,8 @@ from app.db.store import get_conn
 from app.prompts.card_generation import build_card_generation_prompt
 from app.prompts.evaluation import build_evaluation_prompt
 from app.prompts.round_summary import build_round_summary_prompt
+
+logger = logging.getLogger(__name__)
 
 REQUIRED_CARD_FIELDS = {
     "id",
@@ -33,7 +37,10 @@ def build_search_query(state, deps):
 
 def search_material_with_tavily(state, deps):
     results = deps.search_provider.search(state["search_query"], max_results=5)
-    return {"search_results": [r.model_dump() for r in results]}
+    search_results = [r.model_dump() for r in results]
+    dump_path = _dump_search_material(state, search_results)
+    logger.info("Saved raw search material to %s", dump_path)
+    return {"search_results": search_results, "search_dump_path": str(dump_path)}
 
 
 def generate_learning_cards(state, deps):
@@ -195,3 +202,20 @@ def save_round_summary(state, deps):
     conn.commit()
     conn.close()
     return {}
+
+
+def _dump_search_material(state: dict, search_results: list[dict]) -> Path:
+    dump_dir = Path(__file__).resolve().parents[2] / "debug" / "search-material"
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    dump_path = dump_dir / f"{state['session_id']}.json"
+    payload = {
+        "savedAt": datetime.utcnow().isoformat(),
+        "sessionId": state.get("session_id"),
+        "userId": state.get("user_id"),
+        "topic": state.get("topic"),
+        "level": state.get("level"),
+        "searchQuery": state.get("search_query"),
+        "searchResults": search_results,
+    }
+    dump_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return dump_path

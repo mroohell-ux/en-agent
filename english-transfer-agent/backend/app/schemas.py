@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -54,11 +54,11 @@ class AnswerEvaluation(BaseModel):
     targetUsageQuality: Literal["failed", "partial", "good", "excellent"]
     adviceChinese: str
     teacherResponseChinese: str
-    mainTeachingPoint: str | None = None
-    microLessonChinese: str | None = None
-    retryPromptChinese: str | None = None
-    followUpPromptChinese: str | None = None
-    sentenceFrame: str | None = None
+    mainTeachingPoint: Optional[str] = None
+    microLessonChinese: Optional[str] = None
+    retryPromptChinese: Optional[str] = None
+    followUpPromptChinese: Optional[str] = None
+    sentenceFrame: Optional[str] = None
     correctedAnswer: str
     naturalVersion: str
     advancedVersion: str
@@ -102,7 +102,7 @@ class AnswerRequest(BaseModel):
     sessionId: str
     cardId: str
     userAnswer: str
-    attemptNumber: int | None = None
+    attemptNumber: Optional[int] = None
 
 
 class FinishRequest(BaseModel):

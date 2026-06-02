@@ -1,38 +1,120 @@
-import { useState } from 'react';
-import FeedbackBox from './FeedbackBox';
+import type { LearningCard } from '../api/agentClient';
+import AttemptHistory from './AttemptHistory';
+import ReferenceReveal from './ReferenceReveal';
+import RetryBox from './RetryBox';
+import type { CardInteractionState } from './StudySession';
+import TeacherFeedback from './TeacherFeedback';
 
-export default function LearningCard({ card, onSubmit, onAdvance, onFinish, active, index, total }: any) {
-  const [answer, setAnswer] = useState('');
-  const [feedback, setFeedback] = useState<any>(null);
-  const [currentPrompt, setCurrentPrompt] = useState(card.chinesePrompt);
-  const [showRef, setShowRef] = useState(false);
+type Props = {
+  card: LearningCard;
+  state: CardInteractionState;
+  index: number;
+  total: number;
+  isSubmitting: boolean;
+  hasNextCard: boolean;
+  onAnswerChange: (cardId: string, answer: string) => void;
+  onSubmit: (cardId: string) => void;
+  onNextCard: () => void;
+  onFinish: () => void;
+};
 
-  const submit = async () => {
-    const nextFeedback = await onSubmit(card.id, answer);
-    setFeedback(nextFeedback);
-    if (nextFeedback.nextAction === 'follow_up_question' && nextFeedback.followUpPromptChinese) {
-      setCurrentPrompt(nextFeedback.followUpPromptChinese);
-      setAnswer('');
-    }
-    if ((nextFeedback.nextAction === 'give_hint' || nextFeedback.nextAction === 'micro_lesson' || nextFeedback.nextAction === 'try_again') && nextFeedback.retryPromptChinese) {
-      setCurrentPrompt(nextFeedback.retryPromptChinese);
-      setAnswer('');
-    }
-  };
+function statusLabel(status: CardInteractionState['status']) {
+  if (status === 'passed') return 'Passed';
+  if (status === 'not_started') return 'Not started';
+  return 'In progress';
+}
 
-  if (!active) return <div style={{ marginTop: 8, padding: 12, border: '1px solid #ddd', borderRadius: 12, opacity: 0.7 }}>{index + 1}. {card.title}</div>;
-  return <div style={{ marginTop: 8, padding: 12, border: '1px solid #bbb', borderRadius: 12 }}>
-    <div>Card {index + 1} / {total}</div>
-    <h3>{card.type}</h3>
-    <p>{currentPrompt}</p>
-    <textarea value={answer} onChange={(e)=>setAnswer(e.target.value)} style={{ width: '100%', minHeight: 90 }} />
-    <button onClick={submit}>Submit</button>
-    <FeedbackBox feedback={feedback} />
-    {feedback?.nextAction === 'next_card' && <button onClick={onAdvance}>Next Card</button>}
-    {feedback?.nextAction === 'finish_round' && <button onClick={onFinish}>Finish Round</button>}
-    <details open={showRef} onToggle={(e)=>setShowRef((e.target as HTMLDetailsElement).open)}>
-      <summary>Show reference and target</summary>
-      <p>Original: {card.originalReference}</p><p>Extracted: {card.extractedFromOriginal}</p><p>Target: {card.target}</p><p>Rewrite: {card.referenceExample}</p>
-    </details>
-  </div>;
+function submitLabel(state: CardInteractionState) {
+  const nextAction = state.latestEvaluation?.nextAction;
+
+  if (!state.attempts.length) return 'Submit answer';
+  if (nextAction === 'micro_lesson') return 'Try again';
+  return 'Submit again';
+}
+
+function canRetry(state: CardInteractionState) {
+  return (
+    state.latestEvaluation?.nextAction === 'give_hint' ||
+    state.latestEvaluation?.nextAction === 'micro_lesson' ||
+    state.latestEvaluation?.nextAction === 'try_again' ||
+    state.latestEvaluation?.nextAction === 'follow_up_question' ||
+    !state.latestEvaluation
+  );
+}
+
+export default function LearningCardView({
+  card,
+  state,
+  index,
+  total,
+  isSubmitting,
+  hasNextCard,
+  onAnswerChange,
+  onSubmit,
+  onNextCard,
+  onFinish,
+}: Props) {
+  const latestEvaluation = state.latestEvaluation;
+  const isPassed = state.status === 'passed';
+  const nextAction = latestEvaluation?.nextAction;
+  const showAnswerBox = canRetry(state) && !isPassed;
+
+  return (
+    <article className="learning-card">
+      <header className="card-header">
+        <div className="header-left">
+          <span className="badge type">{card.type}</span>
+          <span className="card-count">Card {index + 1} / {total}</span>
+        </div>
+        <div className="badge-row">
+          <span className={`badge status ${isPassed ? 'passed' : ''}`}>{statusLabel(state.status)}</span>
+          {latestEvaluation && <span className="badge score">{latestEvaluation.score}/100</span>}
+        </div>
+      </header>
+
+      <section className="teacher-prompt">
+        <p className="section-label">Teacher asks</p>
+        <p className="prompt-text">{state.currentPromptChinese}</p>
+      </section>
+
+      {showAnswerBox && (
+        <section className="answer-area" aria-label="Answer this card">
+          <textarea
+            value={state.currentAnswer}
+            onChange={(event) => onAnswerChange(card.id, event.target.value)}
+            placeholder="Type your English answer…"
+          />
+          <button
+            className="primary-button"
+            onClick={() => onSubmit(card.id)}
+            disabled={isSubmitting || !state.currentAnswer.trim()}
+          >
+            {isSubmitting ? 'Evaluating…' : submitLabel(state)}
+          </button>
+        </section>
+      )}
+
+      {latestEvaluation && <TeacherFeedback evaluation={latestEvaluation} />}
+      {latestEvaluation && <RetryBox evaluation={latestEvaluation} />}
+
+      {nextAction === 'next_card' && hasNextCard && (
+        <div className="finish-panel">
+          <button className="secondary-button" onClick={onNextCard}>Next Card</button>
+        </div>
+      )}
+      {nextAction === 'next_card' && !hasNextCard && (
+        <div className="finish-panel">
+          <button className="secondary-button" onClick={onFinish}>Finish Round</button>
+        </div>
+      )}
+      {nextAction === 'finish_round' && (
+        <div className="finish-panel">
+          <button className="secondary-button" onClick={onFinish}>Finish Round</button>
+        </div>
+      )}
+
+      <AttemptHistory attempts={state.attempts} />
+      {state.attempts.length > 0 && <ReferenceReveal card={card} />}
+    </article>
+  );
 }

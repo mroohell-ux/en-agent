@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from abc import ABC, abstractmethod
-from typing import TypeVar
+from typing import Any, Callable, TypeVar
 
 import httpx
 from pydantic import BaseModel
@@ -178,7 +179,7 @@ class OpenAiCompatibleProvider(AiProvider):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.missing_key_error = missing_key_error
-        self.response_format_builder = response_format_builder
+        self.response_format_builder: Callable[[type[SchemaModel], str], dict[str, Any]] = response_format_builder
 
     def generate_cards(self, prompt: str) -> LearningCardSet:
         return self._chat_structured(prompt, LearningCardSet, "LearningCardSet")
@@ -228,6 +229,7 @@ class OpenAiCompatibleProvider(AiProvider):
         data = response.json()
         content = data["choices"][0]["message"]["content"]
         parsed = self._parse_json_content(content)
+        parsed = _normalize_schema_payload(schema_model, parsed)
         return schema_model.model_validate(parsed)
 
     @staticmethod
@@ -288,6 +290,322 @@ def _build_json_schema_response_format(schema_model: type[SchemaModel], schema_n
 
 def _build_json_object_response_format(schema_model: type[SchemaModel], schema_name: str) -> dict:
     return {"type": "json_object"}
+
+
+def _normalize_schema_payload(schema_model: type[SchemaModel], payload: Any) -> Any:
+    if schema_model is LearningCardSet and isinstance(payload, dict):
+        cards = payload.get("cards")
+        if isinstance(cards, list):
+            payload = dict(payload)
+            payload["cards"] = [_normalize_learning_card(card, index) for index, card in enumerate(cards, start=1)]
+    elif schema_model is AnswerEvaluation and isinstance(payload, dict):
+        payload = _normalize_answer_evaluation(payload)
+    elif schema_model is RoundSummary and isinstance(payload, dict):
+        payload = _normalize_round_summary(payload)
+    return payload
+
+
+def _normalize_learning_card(card: Any, index: int) -> Any:
+    if not isinstance(card, dict):
+        return card
+
+    normalized = dict(card)
+    normalized["id"] = str(
+        normalized.get("id")
+        or normalized.get("cardId")
+        or normalized.get("card_id")
+        or f"card-{index}-{uuid.uuid4().hex[:8]}"
+    )
+
+    normalized_type = (
+        normalized.get("type")
+        or normalized.get("cardType")
+        or normalized.get("category")
+        or normalized.get("kind")
+        or "Pattern"
+    )
+    normalized["type"] = _normalize_card_type(str(normalized_type))
+
+    source = normalized.get("source")
+    if not isinstance(source, dict):
+        source = {}
+    source = dict(source)
+    source["title"] = str(
+        source.get("title")
+        or normalized.get("sourceTitle")
+        or normalized.get("articleTitle")
+        or normalized.get("title")
+        or normalized.get("target")
+        or normalized.get("targetExpression")
+        or f"Card {index}"
+    )
+    source["site"] = str(
+        source.get("site")
+        or normalized.get("sourceSite")
+        or normalized.get("site")
+        or normalized.get("publisher")
+        or ""
+    )
+    source["url"] = str(
+        source.get("url")
+        or normalized.get("sourceUrl")
+        or normalized.get("url")
+        or normalized.get("articleUrl")
+        or ""
+    )
+    normalized["source"] = source
+
+    normalized["title"] = str(
+        normalized.get("title")
+        or normalized.get("cardTitle")
+        or normalized.get("label")
+        or normalized.get("target")
+        or normalized.get("targetExpression")
+        or source["title"]
+    )
+    normalized["originalReference"] = str(
+        normalized.get("originalReference")
+        or normalized.get("referenceSentence")
+        or normalized.get("reference")
+        or normalized.get("sourceSentence")
+        or normalized.get("originalSentence")
+        or ""
+    )
+    normalized["extractedFromOriginal"] = str(
+        normalized.get("extractedFromOriginal")
+        or normalized.get("extractedTarget")
+        or normalized.get("extractedChunk")
+        or normalized.get("keyExpression")
+        or normalized.get("target")
+        or normalized.get("targetExpression")
+        or ""
+    )
+    normalized["target"] = str(
+        normalized.get("target")
+        or normalized.get("targetExpression")
+        or normalized.get("expression")
+        or normalized.get("pattern")
+        or normalized.get("focus")
+        or normalized["extractedFromOriginal"]
+    )
+    normalized["referenceExample"] = str(
+        normalized.get("referenceExample")
+        or normalized.get("exampleSentence")
+        or normalized.get("rewriteExample")
+        or normalized.get("example")
+        or normalized.get("sampleAnswer")
+        or ""
+    )
+    normalized["chinesePrompt"] = str(
+        normalized.get("chinesePrompt")
+        or normalized.get("promptChinese")
+        or normalized.get("transferPromptChinese")
+        or normalized.get("questionChinese")
+        or normalized.get("prompt")
+        or ""
+    )
+    normalized["expectedAnswer"] = str(
+        normalized.get("expectedAnswer")
+        or normalized.get("expectedEnglish")
+        or normalized.get("exampleAnswer")
+        or normalized.get("idealAnswer")
+        or normalized.get("sampleAnswer")
+        or normalized["referenceExample"]
+    )
+    normalized["mustContain"] = str(
+        normalized.get("mustContain")
+        or normalized.get("mustUse")
+        or normalized.get("requiredPhrase")
+        or normalized.get("requiredExpression")
+        or normalized["target"]
+    )
+    return normalized
+
+
+def _normalize_card_type(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"pattern", "sentence pattern"}:
+        return "Pattern"
+    if normalized in {"grammar", "grammatical point"}:
+        return "Grammar"
+    if normalized in {"chunk", "phrase", "collocation"}:
+        return "Chunk"
+    return "Pattern"
+
+
+def _normalize_answer_evaluation(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    normalized["score"] = int(normalized.get("score", 0) or 0)
+    normalized["targetUsed"] = _coerce_bool(normalized.get("targetUsed"))
+    normalized["targetUsageQuality"] = _normalize_target_usage_quality(
+        normalized.get("targetUsageQuality"),
+        normalized["targetUsed"],
+        normalized["score"],
+    )
+    normalized["adviceChinese"] = str(
+        normalized.get("adviceChinese")
+        or normalized.get("advice")
+        or normalized.get("feedbackChinese")
+        or normalized.get("teacherResponseChinese")
+        or normalized.get("teacherResponse")
+        or ""
+    )
+    normalized["teacherResponseChinese"] = str(
+        normalized.get("teacherResponseChinese")
+        or normalized.get("teacherResponse")
+        or normalized.get("feedbackChinese")
+        or normalized["adviceChinese"]
+        or ""
+    )
+    normalized["status"] = str(normalized.get("status") or "evaluated")
+    normalized["mainTeachingPoint"] = normalized.get("mainTeachingPoint") or normalized.get("teachingPoint")
+    normalized["microLessonChinese"] = normalized.get("microLessonChinese") or normalized.get("microLesson")
+    normalized["retryPromptChinese"] = normalized.get("retryPromptChinese") or normalized.get("retryPrompt")
+    normalized["followUpPromptChinese"] = normalized.get("followUpPromptChinese") or normalized.get("followUpPrompt")
+    normalized["sentenceFrame"] = normalized.get("sentenceFrame") or normalized.get("frame")
+    normalized["correctedAnswer"] = str(
+        normalized.get("correctedAnswer")
+        or normalized.get("correction")
+        or normalized.get("revisedAnswer")
+        or normalized.get("betterAnswer")
+        or ""
+    )
+    normalized["naturalVersion"] = str(
+        normalized.get("naturalVersion")
+        or normalized.get("naturalAnswer")
+        or normalized.get("moreNaturalVersion")
+        or normalized["correctedAnswer"]
+    )
+    normalized["advancedVersion"] = str(
+        normalized.get("advancedVersion")
+        or normalized.get("advancedAnswer")
+        or normalized.get("strongerVersion")
+        or normalized["naturalVersion"]
+    )
+    normalized["mistakes"] = _normalize_mistakes(normalized.get("mistakes"))
+    normalized["nextAction"] = _normalize_next_action(
+        normalized.get("nextAction"),
+        normalized["targetUsed"],
+        normalized["targetUsageQuality"],
+        normalized["mistakes"],
+    )
+    return normalized
+
+
+def _normalize_round_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    normalized["whatUserDidWell"] = normalized.get("whatUserDidWell") or normalized.get("strengths") or []
+    normalized["suggestedNextPractice"] = normalized.get("suggestedNextPractice") or normalized.get("nextPractice") or []
+    return normalized
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes", "y", "1", "used", "present"}
+    return False
+
+
+def _normalize_target_usage_quality(value: Any, target_used: bool, score: int) -> str:
+    normalized = str(value or "").strip().lower()
+    mapping = {
+        "none": "failed",
+        "missing": "failed",
+        "not_used": "failed",
+        "failed": "failed",
+        "weak": "partial",
+        "partial": "partial",
+        "ok": "good",
+        "good": "good",
+        "strong": "excellent",
+        "excellent": "excellent",
+    }
+    if normalized in mapping:
+        return mapping[normalized]
+    if not target_used:
+        return "failed"
+    if score >= 90:
+        return "excellent"
+    if score >= 75:
+        return "good"
+    return "partial"
+
+
+def _normalize_mistakes(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+
+    normalized_mistakes: list[dict[str, str]] = []
+    for item in value:
+        if isinstance(item, dict):
+            normalized_mistakes.append({
+                "type": _normalize_mistake_type(item.get("type")),
+                "original": str(item.get("original") or item.get("mistake") or item.get("issue") or ""),
+                "correction": str(item.get("correction") or item.get("fix") or item.get("suggestion") or ""),
+                "explanationChinese": str(item.get("explanationChinese") or item.get("explanation") or "需要修正这个问题。"),
+                "reviewItem": str(item.get("reviewItem") or item.get("focus") or item.get("correction") or item.get("original") or ""),
+            })
+            continue
+
+        if isinstance(item, str):
+            normalized_mistakes.append({
+                "type": _infer_mistake_type(item),
+                "original": item,
+                "correction": "",
+                "explanationChinese": "需要根据老师反馈修正这个问题。",
+                "reviewItem": item,
+            })
+    return normalized_mistakes
+
+
+def _normalize_mistake_type(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"pattern", "grammar", "naturalness", "word_choice", "structure"}:
+        return normalized
+    return _infer_mistake_type(normalized)
+
+
+def _infer_mistake_type(text: str) -> str:
+    lowered = text.lower()
+    if "grammar" in lowered or "preposition" in lowered or "tense" in lowered or "plural" in lowered:
+        return "grammar"
+    if "word" in lowered or "vocabulary" in lowered or "choice" in lowered:
+        return "word_choice"
+    if "natural" in lowered or "awkward" in lowered:
+        return "naturalness"
+    if "structure" in lowered or "sentence" in lowered or "subject" in lowered:
+        return "structure"
+    return "pattern"
+
+
+def _normalize_next_action(value: Any, target_used: bool, target_usage_quality: str, mistakes: list[dict[str, str]]) -> str:
+    normalized = str(value or "").strip().lower()
+    mapping = {
+        "try_again": "try_again",
+        "retry": "try_again",
+        "give_hint": "give_hint",
+        "hint": "give_hint",
+        "micro_lesson": "micro_lesson",
+        "lesson": "micro_lesson",
+        "follow_up_question": "follow_up_question",
+        "followup": "follow_up_question",
+        "next_card": "next_card",
+        "next": "next_card",
+        "finish_round": "finish_round",
+        "finish": "finish_round",
+    }
+    if normalized in mapping:
+        return mapping[normalized]
+    if not target_used:
+        return "give_hint"
+    if mistakes and target_usage_quality in {"failed", "partial"}:
+        return "micro_lesson"
+    if target_usage_quality == "good":
+        return "follow_up_question"
+    return "next_card"
 
 
 def build_ai_provider(name: str) -> AiProvider:
