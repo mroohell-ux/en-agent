@@ -7,7 +7,7 @@ type Props = {
 export default function ReferenceReveal({ card }: Props) {
   return (
     <details className="reveal">
-      <summary>Show reference and target</summary>
+      <summary>Original reference and target</summary>
       <div className="history-item">
         <div className="kicker">Original reference</div>
         <p>{card.originalReference}</p>

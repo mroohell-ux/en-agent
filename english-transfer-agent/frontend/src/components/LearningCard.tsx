@@ -1,7 +1,6 @@
 import type { LearningCard } from '../api/agentClient';
 import AttemptHistory from './AttemptHistory';
 import ReferenceReveal from './ReferenceReveal';
-import RetryBox from './RetryBox';
 import type { CardInteractionState } from './StudySession';
 import TeacherFeedback from './TeacherFeedback';
 
@@ -18,10 +17,20 @@ type Props = {
   onFinish: () => void;
 };
 
-function statusLabel(status: CardInteractionState['status']) {
-  if (status === 'passed') return 'Passed';
-  if (status === 'not_started') return 'Not started';
-  return 'In progress';
+function statusLabel(state: CardInteractionState) {
+  const evaluation = state.latestEvaluation;
+
+  if (!evaluation) {
+    if (state.status === 'passed') return 'Good transfer';
+    if (state.status === 'not_started') return 'Not started';
+    return 'Ready';
+  }
+
+  if (!evaluation.targetUsed) return 'Target missing';
+  if (evaluation.nextAction === 'try_again' || evaluation.nextAction === 'micro_lesson' || evaluation.nextAction === 'give_hint') return 'Needs retry';
+  if (evaluation.nextAction === 'follow_up_question') return 'Almost there';
+  if (evaluation.targetUsageQuality === 'excellent' || evaluation.targetUsageQuality === 'good') return 'Good transfer';
+  return 'Almost there';
 }
 
 function submitLabel(state: CardInteractionState) {
@@ -58,6 +67,9 @@ export default function LearningCardView({
   const isPassed = state.status === 'passed';
   const nextAction = latestEvaluation?.nextAction;
   const showAnswerBox = canRetry(state) && !isPassed;
+  const showInitialAnswerBox = showAnswerBox && !latestEvaluation;
+  const showRetryAnswerBox = showAnswerBox && Boolean(latestEvaluation);
+  const retryPrompt = latestEvaluation?.followUpPromptChinese || latestEvaluation?.retryPromptChinese || state.currentPromptChinese;
 
   return (
     <article className="learning-card">
@@ -67,17 +79,20 @@ export default function LearningCardView({
           <span className="card-count">Card {index + 1} / {total}</span>
         </div>
         <div className="badge-row">
-          <span className={`badge status ${isPassed ? 'passed' : ''}`}>{statusLabel(state.status)}</span>
-          {latestEvaluation && <span className="badge score">{latestEvaluation.score}/100</span>}
+          <span className={`badge status ${isPassed ? 'passed' : ''}`}>{statusLabel(state)}</span>
+          {latestEvaluation && <span className="score-chip">Score {latestEvaluation.score}/100</span>}
         </div>
       </header>
 
       <section className="teacher-prompt">
-        <p className="section-label">Teacher asks</p>
-        <p className="prompt-text">{state.currentPromptChinese}</p>
+        <div className="prompt-topline">
+          <p className="section-label">Teacher asks</p>
+          <span className="target-pill">Target: {card.target}</span>
+        </div>
+        <p className="prompt-text">{card.chinesePrompt}</p>
       </section>
 
-      {showAnswerBox && (
+      {showInitialAnswerBox && (
         <section className="answer-area" aria-label="Answer this card">
           <textarea
             value={state.currentAnswer}
@@ -94,8 +109,29 @@ export default function LearningCardView({
         </section>
       )}
 
-      {latestEvaluation && <TeacherFeedback evaluation={latestEvaluation} />}
-      {latestEvaluation && <RetryBox evaluation={latestEvaluation} />}
+      {latestEvaluation && <TeacherFeedback evaluation={latestEvaluation} target={card.target} />}
+
+      {showRetryAnswerBox && (
+        <section className="retry-area" aria-label="Try again or answer the follow-up">
+          <div className="retry-copy">
+            <div className="kicker">Try again / Follow-up</div>
+            {retryPrompt && <p>{retryPrompt}</p>}
+            {latestEvaluation?.sentenceFrame && <div className="frame">Sentence frame: {latestEvaluation.sentenceFrame}</div>}
+          </div>
+          <textarea
+            value={state.currentAnswer}
+            onChange={(event) => onAnswerChange(card.id, event.target.value)}
+            placeholder="Try your revised English answer…"
+          />
+          <button
+            className="primary-button"
+            onClick={() => onSubmit(card.id)}
+            disabled={isSubmitting || !state.currentAnswer.trim()}
+          >
+            {isSubmitting ? 'Evaluating…' : submitLabel(state)}
+          </button>
+        </section>
+      )}
 
       {nextAction === 'next_card' && hasNextCard && (
         <div className="finish-panel">

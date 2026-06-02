@@ -9,7 +9,7 @@ export default function AttemptHistory({ attempts }: Props) {
 
   return (
     <details className="reveal">
-      <summary>Show attempts</summary>
+      <summary>Attempt history</summary>
       {attempts.map((attempt) => {
         const mistake = attempt.evaluation.mistakes?.[0];
         const goodTransfer = attempt.evaluation.targetUsed && !mistake;
