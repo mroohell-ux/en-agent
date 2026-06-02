@@ -28,10 +28,11 @@ REQUIRED_CARD_FIELDS = {
 
 
 def build_search_query(state, deps):
+    topic = state["topic"]
+    topic_text = "science culture technology psychology lifestyle" if topic == "random" else topic
     query = (
-        f"real-world magazine or newspaper article for ordinary educated readers, topic {state['topic']}, "
-        "feature article essay analysis useful for English transfer practice, "
-        "not ESL, not English learner material, not simplified by level, avoid political and too technical content"
+        f"engaging real-world feature article or essay about {topic_text}; "
+        "ordinary educated readers; useful language patterns; not ESL or simplified learner material"
     )
     return {"search_query": query}
 

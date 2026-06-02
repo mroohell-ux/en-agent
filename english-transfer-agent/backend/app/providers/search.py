@@ -81,14 +81,43 @@ class TavilySearchProvider(SearchProvider):
 
         include_domains = _domains_from_env("TAVILY_INCLUDE_DOMAINS", PRESET_ARTICLE_DOMAINS)
         exclude_domains = _domains_from_env("TAVILY_EXCLUDE_DOMAINS", EXCLUDED_LEARNER_DOMAINS)
-        payload = {
+
+        preferred_results = self._search_once(
+            query=query,
+            max_results=max_results,
+            exclude_domains=exclude_domains,
+            include_domains=include_domains,
+        )
+        if preferred_results:
+            return preferred_results
+
+        # If Tavily cannot satisfy the allowlist, fall back to a broader search while
+        # still blocking learner/leveled sites and homepages so the workflow does not
+        # fail with an empty source set.
+        return self._search_once(
+            query=query,
+            max_results=max_results,
+            exclude_domains=exclude_domains,
+            include_domains=None,
+        )
+
+    def _search_once(
+        self,
+        query: str,
+        max_results: int,
+        exclude_domains: list[str],
+        include_domains: list[str] | None,
+    ) -> list[SearchResult]:
+        payload: dict[str, object] = {
             "api_key": self.api_key,
             "query": query,
-            "max_results": max(max_results * 2, 10),
+            "max_results": max(max_results * 3, 15),
             "search_depth": "basic",
-            "include_domains": include_domains,
             "exclude_domains": exclude_domains,
         }
+        if include_domains:
+            payload["include_domains"] = include_domains
+
         response = httpx.post("https://api.tavily.com/search", json=payload, timeout=20)
         response.raise_for_status()
         data = response.json()
