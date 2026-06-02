@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import json
+import os
 from abc import ABC, abstractmethod
+from typing import TypeVar
+
+import httpx
+from pydantic import BaseModel
 
 from app.schemas import (
     AnswerEvaluation,
     CardSource,
     LearningCard,
     LearningCardSet,
-    MemoryDecision,
-    MemoryItemToSave,
     Mistake,
     MistakeToRemember,
     PracticedItem,
-    ReviewPlanItem,
     RoundSummary,
 )
 
@@ -100,11 +103,6 @@ class MockAiProvider(AiProvider):
                 naturalVersion="Consistent speaking and writing practice plays a key role in turning passive English into active use.",
                 advancedVersion="Sustained output practice plays a key role in converting passive competence into active command.",
                 mistakes=[Mistake(type="pattern", original="missing target expression", correction=f"use {target_phrase}", explanationChinese="需要迁移目标表达，而不只是表达意思。", reviewItem=target_phrase)],
-                memoryDecision=MemoryDecision(
-                    action="save_as_weak",
-                    reasonChinese="未成功迁移目标表达，需要作为弱项继续练。",
-                    itemsToSave=[MemoryItemToSave(type="PATTERN", text=target_phrase, priority="high")],
-                ),
                 nextAction="give_hint",
             )
 
@@ -125,11 +123,6 @@ class MockAiProvider(AiProvider):
                 naturalVersion="Output practice plays a key role in improving spoken English.",
                 advancedVersion="Consistent output practice plays a key role in developing fluent spoken English.",
                 mistakes=[Mistake(type="grammar", original="in improve", correction="in improving", explanationChinese="介词 in 后面要接动名词 improving。", reviewItem="preposition + verb-ing")],
-                memoryDecision=MemoryDecision(
-                    action="save_for_review",
-                    reasonChinese="目标表达已迁移，但语法点需要复习。",
-                    itemsToSave=[MemoryItemToSave(type="GRAMMAR", text="preposition + verb-ing", priority="medium")],
-                ),
                 nextAction="micro_lesson",
             )
 
@@ -149,30 +142,158 @@ class MockAiProvider(AiProvider):
             naturalVersion=user_answer,
             advancedVersion="Sustained output practice plays a key role in converting passive competence into active command.",
             mistakes=[],
-            memoryDecision=MemoryDecision(
-                action="mark_known" if excellent else "save_for_review",
-                reasonChinese="第一次高质量完成，可作为候选已掌握。" if excellent else "表现不错，但还需要一次换语境巩固。",
-                itemsToSave=[MemoryItemToSave(type="PATTERN", text=target_phrase, priority="low")],
-            ),
             nextAction="next_card" if excellent else "follow_up_question",
         )
 
     def summarize_round(self, prompt: str) -> RoundSummary:
         return RoundSummary(
-            practicedItems=[PracticedItem(cardTitle="Key role pattern", target="X plays a key role in Y.", score=85, memoryAction="save_for_review")],
+            practicedItems=[PracticedItem(cardTitle="Key role pattern", target="X plays a key role in Y.", score=85)],
             whatUserDidWell=["能够理解原句含义并尝试迁移结构"],
             mistakesToRemember=[MistakeToRemember(mistake="in improve", correction="in improving", ruleChinese="介词后动词用 -ing", example="plays a key role in improving")],
             weakItems=["preposition + verb-ing"],
-            knownItemsAdded=["a lack of + noun"],
-            reviewPlan=[ReviewPlanItem(item="preposition + verb-ing", type="Grammar", reviewAfterDays=1)]
+            suggestedNextPractice=["用本轮练过的表达各造一个新句子；这只是练习建议，不会写入长期复习计划。"],
         )
 
 
-class GrokProvider(MockAiProvider):
-    pass
+SchemaModel = TypeVar("SchemaModel", bound=BaseModel)
+
+
+class OpenAiCompatibleProvider(AiProvider):
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        base_url: str,
+        timeout: float,
+        temperature: float,
+        max_tokens: int,
+        missing_key_error: str,
+        response_format_builder,
+    ) -> None:
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.missing_key_error = missing_key_error
+        self.response_format_builder = response_format_builder
+
+    def generate_cards(self, prompt: str) -> LearningCardSet:
+        return self._chat_structured(prompt, LearningCardSet, "LearningCardSet")
+
+    def evaluate_answer(self, prompt: str) -> AnswerEvaluation:
+        return self._chat_structured(prompt, AnswerEvaluation, "AnswerEvaluation")
+
+    def summarize_round(self, prompt: str) -> RoundSummary:
+        return self._chat_structured(prompt, RoundSummary, "RoundSummary")
+
+    def _chat_structured(self, prompt: str, schema_model: type[SchemaModel], schema_name: str) -> SchemaModel:
+        if not self.api_key:
+            raise RuntimeError(self.missing_key_error)
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are the AI backend for an English transfer-learning app. "
+                        "Return only JSON that matches the requested schema. "
+                        "Do not include markdown, commentary, or long-term memory actions."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": False,
+        }
+
+        response_format = self.response_format_builder(schema_model, schema_name)
+        if response_format is not None:
+            payload["response_format"] = response_format
+
+        response = httpx.post(
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        parsed = self._parse_json_content(content)
+        return schema_model.model_validate(parsed)
+
+    @staticmethod
+    def _parse_json_content(content):
+        if isinstance(content, dict):
+            return content
+        if not isinstance(content, str):
+            raise ValueError("Model response content was not a JSON string or object")
+
+        stripped = content.strip()
+        if stripped.startswith("```"):
+            lines = stripped.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            stripped = "\n".join(lines).strip()
+        return json.loads(stripped)
+
+
+class GrokProvider(OpenAiCompatibleProvider):
+    def __init__(self) -> None:
+        super().__init__(
+            api_key=os.getenv("XAI_API_KEY", ""),
+            model=os.getenv("XAI_MODEL", "grok-4.3"),
+            base_url=os.getenv("XAI_BASE_URL", "https://api.x.ai/v1"),
+            timeout=float(os.getenv("XAI_TIMEOUT_SECONDS", "60")),
+            temperature=float(os.getenv("XAI_TEMPERATURE", "0.2")),
+            max_tokens=int(os.getenv("XAI_MAX_TOKENS", "4096")),
+            missing_key_error="XAI_API_KEY is required when AI_PROVIDER=grok",
+            response_format_builder=_build_json_schema_response_format,
+        )
+
+
+class AlibabaProvider(OpenAiCompatibleProvider):
+    def __init__(self) -> None:
+        super().__init__(
+            api_key=os.getenv("ALIBABA_API_KEY", os.getenv("DASHSCOPE_API_KEY", "")),
+            model=os.getenv("ALIBABA_MODEL", os.getenv("DASHSCOPE_MODEL", "qwen-plus")),
+            base_url=os.getenv("ALIBABA_BASE_URL", os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")),
+            timeout=float(os.getenv("ALIBABA_TIMEOUT_SECONDS", os.getenv("DASHSCOPE_TIMEOUT_SECONDS", "60"))),
+            temperature=float(os.getenv("ALIBABA_TEMPERATURE", os.getenv("DASHSCOPE_TEMPERATURE", "0.2"))),
+            max_tokens=int(os.getenv("ALIBABA_MAX_TOKENS", os.getenv("DASHSCOPE_MAX_TOKENS", "4096"))),
+            missing_key_error="ALIBABA_API_KEY or DASHSCOPE_API_KEY is required when AI_PROVIDER=alibaba",
+            response_format_builder=_build_json_object_response_format,
+        )
+
+
+def _build_json_schema_response_format(schema_model: type[SchemaModel], schema_name: str) -> dict:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": schema_name,
+            "schema": schema_model.model_json_schema(),
+        },
+    }
+
+
+def _build_json_object_response_format(schema_model: type[SchemaModel], schema_name: str) -> dict:
+    return {"type": "json_object"}
 
 
 def build_ai_provider(name: str) -> AiProvider:
-    if name == "grok":
+    normalized = (name or "mock").lower().strip()
+    if normalized == "grok":
         return GrokProvider()
+    if normalized in {"alibaba", "dashscope", "qwen"}:
+        return AlibabaProvider()
     return MockAiProvider()

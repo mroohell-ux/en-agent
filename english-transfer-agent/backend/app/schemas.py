@@ -47,18 +47,6 @@ class Mistake(BaseModel):
     reviewItem: str
 
 
-class MemoryItemToSave(BaseModel):
-    type: Literal["PATTERN", "GRAMMAR", "CHUNK", "NATURALNESS"]
-    text: str
-    priority: Literal["low", "medium", "high"]
-
-
-class MemoryDecision(BaseModel):
-    action: Literal["mark_known", "save_for_review", "save_as_weak", "none"]
-    reasonChinese: str
-    itemsToSave: list[MemoryItemToSave] = Field(default_factory=list)
-
-
 class AnswerEvaluation(BaseModel):
     score: int
     status: str
@@ -75,7 +63,6 @@ class AnswerEvaluation(BaseModel):
     naturalVersion: str
     advancedVersion: str
     mistakes: list[Mistake]
-    memoryDecision: MemoryDecision
     nextAction: Literal["try_again", "give_hint", "micro_lesson", "follow_up_question", "next_card", "finish_round"]
 
 
@@ -83,7 +70,6 @@ class PracticedItem(BaseModel):
     cardTitle: str
     target: str
     score: int
-    memoryAction: str
 
 
 class MistakeToRemember(BaseModel):
@@ -93,19 +79,12 @@ class MistakeToRemember(BaseModel):
     example: str
 
 
-class ReviewPlanItem(BaseModel):
-    item: str
-    type: Literal["Pattern", "Grammar", "Chunk", "Naturalness"]
-    reviewAfterDays: int
-
-
 class RoundSummary(BaseModel):
     practicedItems: list[PracticedItem]
     whatUserDidWell: list[str]
     mistakesToRemember: list[MistakeToRemember]
     weakItems: list[str]
-    knownItemsAdded: list[str]
-    reviewPlan: list[ReviewPlanItem]
+    suggestedNextPractice: list[str] = Field(default_factory=list)
 
 
 class StartRequest(BaseModel):

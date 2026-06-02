@@ -14,7 +14,6 @@ class AgentState(TypedDict, total=False):
     user_answer: str
     attempt_number: int
 
-    memory: dict
     search_query: str
     search_results: list[dict]
 
@@ -24,10 +23,7 @@ class AgentState(TypedDict, total=False):
     is_last_card: bool
 
     evaluation: dict
-    memory_action: str
     round_data: dict
     round_summary: dict
 
-    novelty_score: int
-    retry_count: int
     error: str

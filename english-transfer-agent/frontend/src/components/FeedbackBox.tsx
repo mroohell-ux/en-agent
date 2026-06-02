@@ -13,7 +13,6 @@ export default function FeedbackBox({ feedback }: { feedback: any }) {
     <div>Corrected: {feedback.correctedAnswer}</div>
     <div>Natural: {feedback.naturalVersion}</div>
     <div>Advanced: {feedback.advancedVersion}</div>
-    <div>Memory: {feedback.memoryDecision?.action}</div>
     <div>Next: {feedback.nextAction}</div>
   </div>;
 }
