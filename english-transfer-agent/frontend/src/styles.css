@@ -36,6 +36,11 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 4.5rem); letter-spacing: -0.07em; 
 .primary-button:hover, .secondary-button:hover, .ghost-button:hover { transform: translateY(-1px); }
 .loading-card, .empty-state { border-radius: 28px; padding: 18px 20px; background: rgba(255, 250, 242, 0.82); color: #6f6255; box-shadow: 0 16px 42px rgba(60, 41, 22, 0.09); }
 .loading-card p { margin: 7px 0; }
+.backend-status { display: grid; gap: 8px; }
+.loading-title { color: #3f3023; font-size: 1.08rem; font-weight: 900; }
+.loading-note { color: #6f6255; }
+.loading-steps { display: grid; gap: 8px; margin: 4px 0 0; padding-left: 22px; color: #5f5246; line-height: 1.5; }
+.loading-steps li::marker { color: #7c3aed; font-weight: 900; }
 .card-stack { position: relative; display: grid; gap: 14px; }
 .stack-preview { width: 100%; text-align: left; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 16px 18px; border-radius: 24px; background: rgba(255, 252, 246, 0.78); color: #45372b; box-shadow: 0 14px 34px rgba(65, 44, 23, 0.1); border: 1px solid rgba(91, 63, 35, 0.06); }
 .stack-preview.locked { opacity: 0.64; cursor: default; }

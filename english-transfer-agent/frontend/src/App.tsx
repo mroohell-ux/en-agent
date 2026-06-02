@@ -63,10 +63,15 @@ export default function App() {
       </section>
 
       {loading && (
-        <section className="loading-card" aria-live="polite">
-          <p>Searching useful material with Tavily…</p>
-          <p>Extracting reusable English…</p>
-          <p>Preparing Chinese transfer prompts…</p>
+        <section className="loading-card backend-status" aria-live="polite">
+          <p className="loading-title">Building your practice round…</p>
+          <p className="loading-note">The backend is doing a few teacher tasks for you now:</p>
+          <ol className="loading-steps">
+            <li>Finding a short English source that matches your topic.</li>
+            <li>Choosing reusable phrases or grammar patterns worth practicing.</li>
+            <li>Writing Chinese-first prompt cards so you can transfer the pattern yourself.</li>
+            <li>Preparing teacher feedback rules for your first answer and retry.</li>
+          </ol>
         </section>
       )}
 
