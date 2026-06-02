@@ -1,25 +1,52 @@
 import { useState } from 'react';
-import { startAgent, type LearningCard } from './api/agentClient';
+import { ApiRequestError, startAgent, type LearningCard } from './api/agentClient';
 import StudySession from './components/StudySession';
 import './styles.css';
+
+type UserFacingError = {
+  step: string;
+  rootCause: string;
+};
+
+function describeError(err: unknown, fallbackStep: string): UserFacingError {
+  if (err instanceof ApiRequestError) {
+    return {
+      step: err.step || fallbackStep,
+      rootCause: err.rootCause,
+    };
+  }
+
+  if (err instanceof TypeError) {
+    return {
+      step: 'Connect to backend',
+      rootCause: 'The frontend could not reach the API server. Check that the backend is running and CORS/API URL settings are correct.',
+    };
+  }
+
+  if (err instanceof Error) {
+    return { step: fallbackStep, rootCause: err.message };
+  }
+
+  return { step: fallbackStep, rootCause: 'Something unexpected happened.' };
+}
 
 export default function App() {
   const [topic, setTopic] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [cards, setCards] = useState<LearningCard[]>([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<UserFacingError | null>(null);
 
   const generate = async () => {
     setLoading(true);
-    setError('');
+    setError(null);
 
     try {
       const data = await startAgent(topic.trim() || 'random');
       setCards(data.cards);
       setSessionId(data.sessionId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start a new round.');
+      setError(describeError(err, 'Build practice round'));
     } finally {
       setLoading(false);
     }
@@ -75,7 +102,13 @@ export default function App() {
         </section>
       )}
 
-      {error && <section className="loading-card">{error}</section>}
+      {error && (
+        <section className="loading-card error-card" role="alert">
+          <p className="error-title">Could not finish this step.</p>
+          <p><strong>Step:</strong> {error.step}</p>
+          <p><strong>Root cause:</strong> {error.rootCause}</p>
+        </section>
+      )}
 
       {sessionId && cards.length > 0 ? (
         <StudySession key={sessionId} sessionId={sessionId} cards={cards} onStartAnotherRound={generate} />

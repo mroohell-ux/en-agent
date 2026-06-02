@@ -68,6 +68,51 @@ export type RoundSummary = {
 
 const API_BASE = (import.meta as ImportMeta & { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? 'http://localhost:8000';
 
+export type ApiErrorDetail = {
+  step?: string;
+  rootCause?: string;
+};
+
+export class ApiRequestError extends Error {
+  step?: string;
+  rootCause: string;
+
+  constructor(message: string, detail: ApiErrorDetail = {}) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.step = detail.step;
+    this.rootCause = detail.rootCause || message;
+  }
+}
+
+function isErrorDetail(value: unknown): value is ApiErrorDetail {
+  if (!value || typeof value !== 'object') return false;
+  const detail = value as Record<string, unknown>;
+  return typeof detail.step === 'string' || typeof detail.rootCause === 'string';
+}
+
+async function readErrorDetail(res: Response): Promise<ApiErrorDetail> {
+  try {
+    const payload = await res.json();
+    const detail = payload?.detail;
+
+    if (isErrorDetail(detail)) {
+      return {
+        step: detail.step,
+        rootCause: detail.rootCause || `Request failed with status ${res.status}.`,
+      };
+    }
+
+    if (typeof detail === 'string') {
+      return { rootCause: detail };
+    }
+  } catch {
+    // Fall back to the generic HTTP message below when the response is not JSON.
+  }
+
+  return { rootCause: `Request failed with status ${res.status}.` };
+}
+
 async function postJson<TResponse, TBody extends Record<string, unknown>>(path: string, body: TBody): Promise<TResponse> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
@@ -76,7 +121,8 @@ async function postJson<TResponse, TBody extends Record<string, unknown>>(path: 
   });
 
   if (!res.ok) {
-    throw new Error(`Request failed (${res.status}) for ${path}`);
+    const detail = await readErrorDetail(res);
+    throw new ApiRequestError(`Request failed (${res.status}) for ${path}`, detail);
   }
 
   return res.json();
