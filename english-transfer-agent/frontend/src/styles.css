@@ -127,3 +127,13 @@ details.reveal summary { cursor: pointer; font-weight: 850; color: #5b21b6; }
 @media (min-width: 760px) {
   .teacher-feedback { grid-template-columns: 1fr; }
 }
+.live-steps { list-style: none; padding-left: 0; }
+.live-step, .activity-row { display: flex; align-items: flex-start; gap: 10px; }
+.live-step.waiting { opacity: 0.62; }
+.live-step.active { color: #3f3023; font-weight: 850; }
+.step-status { flex: 0 0 auto; min-width: 54px; border-radius: 999px; padding: 3px 8px; background: #f1e8ff; color: #6d28d9; font-size: 0.72rem; font-weight: 900; text-align: center; text-transform: uppercase; }
+.live-step.done .step-status, .activity-row.completed .step-status { background: #dcfce7; color: #166534; }
+.live-step.active .step-status, .activity-row.started .step-status { background: #fde7b6; color: #71420f; }
+.activity-row.failed .step-status { background: #fee2e2; color: #991b1b; }
+.activity-history { margin-bottom: 16px; }
+.activity-row { margin: 9px 0 0; line-height: 1.5; }
