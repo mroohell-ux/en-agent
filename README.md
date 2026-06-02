@@ -35,6 +35,23 @@ npm install
 npm run dev
 ```
 
+## AI providers
+
+The backend chooses the AI provider from `AI_PROVIDER`:
+
+- `AI_PROVIDER=mock` uses deterministic local mock responses for development.
+- `AI_PROVIDER=grok` calls the xAI Chat Completions API with structured JSON outputs and validates the response against the app schemas.
+
+For Grok mode, provide these environment variables:
+
+```bash
+AI_PROVIDER=grok
+XAI_API_KEY=your_xai_api_key
+XAI_MODEL=grok-4.3
+```
+
+`XAI_MODEL` is optional and defaults to `grok-4.3`. The Grok provider is used for card generation, answer evaluation, and round summaries.
+
 ## MVP status
 
 Implemented first-priority MVP:
