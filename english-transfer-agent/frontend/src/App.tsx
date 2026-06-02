@@ -38,13 +38,24 @@ export default function App() {
         </div>
 
         <div className="start-panel">
-          <input
-            className="topic-input"
+          <label className="topic-label" htmlFor="practice-topic">Practice topic</label>
+          <select
+            id="practice-topic"
+            className="topic-input topic-select"
             value={topic}
             onChange={(event) => setTopic(event.target.value)}
-            placeholder="Optional topic, e.g. technology or culture"
-            aria-label="Optional practice topic"
-          />
+            aria-describedby="practice-topic-help"
+          >
+            <option value="">Surprise me</option>
+            <option value="technology">Technology</option>
+            <option value="culture">Culture</option>
+            <option value="science">Science</option>
+            <option value="psychology">Psychology</option>
+            <option value="lifestyle">Lifestyle</option>
+          </select>
+          <p className="topic-help" id="practice-topic-help">
+            This chooses the source material for your practice cards. “Surprise me” picks a random topic.
+          </p>
           <button className="primary-button" onClick={generate} disabled={loading}>
             {loading ? 'Preparing cards…' : cards.length ? 'Start another round' : 'Generate cards'}
           </button>
