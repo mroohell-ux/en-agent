@@ -38,6 +38,7 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT,
             card_id TEXT,
+            attempt_number INTEGER,
             user_answer TEXT,
             score INTEGER,
             evaluation_json TEXT,
@@ -84,8 +85,15 @@ def init_db() -> None:
         );
         """
     )
+    _ensure_column(cur, "answers", "attempt_number", "INTEGER")
     conn.commit()
     conn.close()
+
+
+def _ensure_column(cur: sqlite3.Cursor, table: str, column: str, column_type: str) -> None:
+    existing_columns = {row[1] for row in cur.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in existing_columns:
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
 
 def normalize(text: str) -> str:
@@ -143,20 +151,42 @@ def save_weak_item(
 ) -> None:
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO weak_items (user_id,type,text,mistake_example,correction,explanation,wrong_count,right_count,next_review_at,priority) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (
-            user_id,
-            item_type,
-            text,
-            mistake_example,
-            correction,
-            explanation,
-            1,
-            0,
-            (datetime.utcnow() + timedelta(days=1)).isoformat(),
-            priority,
-        ),
-    )
+    normalized_priority = priority
+    existing = cur.execute(
+        "SELECT id, wrong_count FROM weak_items WHERE user_id=? AND type=? AND text=? ORDER BY id DESC LIMIT 1",
+        (user_id, item_type, text),
+    ).fetchone()
+    if existing:
+        wrong_count = int(existing["wrong_count"] or 0) + 1
+        if wrong_count >= 2 or priority == "high":
+            normalized_priority = "high"
+        cur.execute(
+            "UPDATE weak_items SET mistake_example=?, correction=?, explanation=?, wrong_count=?, next_review_at=?, priority=? WHERE id=?",
+            (
+                mistake_example,
+                correction,
+                explanation,
+                wrong_count,
+                (datetime.utcnow() + timedelta(days=1)).isoformat(),
+                normalized_priority,
+                existing["id"],
+            ),
+        )
+    else:
+        cur.execute(
+            "INSERT INTO weak_items (user_id,type,text,mistake_example,correction,explanation,wrong_count,right_count,next_review_at,priority) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                user_id,
+                item_type,
+                text,
+                mistake_example,
+                correction,
+                explanation,
+                1,
+                0,
+                (datetime.utcnow() + timedelta(days=1)).isoformat(),
+                normalized_priority,
+            ),
+        )
     conn.commit()
     conn.close()

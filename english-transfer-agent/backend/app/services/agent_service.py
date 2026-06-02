@@ -41,6 +41,7 @@ class AgentService:
                 "session_id": req.sessionId,
                 "card_id": req.cardId,
                 "user_answer": req.userAnswer,
+                "attempt_number": req.attemptNumber,
             }
         )
         return AnswerEvaluation(**state["evaluation"])

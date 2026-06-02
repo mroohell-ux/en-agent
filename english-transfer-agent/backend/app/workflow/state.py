@@ -12,6 +12,7 @@ class AgentState(TypedDict, total=False):
 
     card_id: str
     user_answer: str
+    attempt_number: int
 
     memory: dict
     search_query: str
@@ -20,6 +21,7 @@ class AgentState(TypedDict, total=False):
     cards: list[dict]
     filtered_cards: list[dict]
     current_card: dict
+    is_last_card: bool
 
     evaluation: dict
     memory_action: str

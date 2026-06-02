@@ -65,12 +65,18 @@ class AnswerEvaluation(BaseModel):
     targetUsed: bool
     targetUsageQuality: Literal["failed", "partial", "good", "excellent"]
     adviceChinese: str
+    teacherResponseChinese: str
+    mainTeachingPoint: str | None = None
+    microLessonChinese: str | None = None
+    retryPromptChinese: str | None = None
+    followUpPromptChinese: str | None = None
+    sentenceFrame: str | None = None
     correctedAnswer: str
     naturalVersion: str
     advancedVersion: str
     mistakes: list[Mistake]
     memoryDecision: MemoryDecision
-    nextAction: Literal["try_again", "next_card", "finish_round"]
+    nextAction: Literal["try_again", "give_hint", "micro_lesson", "follow_up_question", "next_card", "finish_round"]
 
 
 class PracticedItem(BaseModel):
@@ -117,6 +123,7 @@ class AnswerRequest(BaseModel):
     sessionId: str
     cardId: str
     userAnswer: str
+    attemptNumber: int | None = None
 
 
 class FinishRequest(BaseModel):
