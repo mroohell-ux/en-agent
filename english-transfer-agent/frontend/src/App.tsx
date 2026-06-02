@@ -94,7 +94,7 @@ export default function App() {
           <p className="loading-title">Building your practice round…</p>
           <p className="loading-note">The backend is doing a few teacher tasks for you now:</p>
           <ol className="loading-steps">
-            <li>Finding a short English source that matches your topic.</li>
+            <li>Finding a real-world English article that ordinary educated readers would actually read.</li>
             <li>Choosing reusable phrases or grammar patterns worth practicing.</li>
             <li>Writing Chinese-first prompt cards so you can transfer the pattern yourself.</li>
             <li>Preparing teacher feedback rules for your first answer and retry.</li>

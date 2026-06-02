@@ -29,8 +29,8 @@ REQUIRED_CARD_FIELDS = {
 
 def build_search_query(state, deps):
     query = (
-        f"well-written English article for {state['level']}, topic {state['topic']}, short to medium, "
-        "useful for English transfer practice, avoid political and too technical content"
+        f"real-world English articles that ordinary educated readers would read, topic {state['topic']}, "
+        "useful for English transfer practice, short to medium, avoid political and too technical content"
     )
     return {"search_query": query}
 
