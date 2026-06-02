@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parents[2] / "english_agent.db"
+logger = logging.getLogger(__name__)
 
 
 def get_conn() -> sqlite3.Connection:
@@ -51,12 +53,18 @@ def init_db() -> None:
         );
         """
     )
+    _ensure_column(cur, "sessions", "topic", "TEXT")
+    _ensure_column(cur, "cards", "card_json", "TEXT")
+    _ensure_column(cur, "cards", "created_at", "TEXT")
     _ensure_column(cur, "answers", "attempt_number", "INTEGER")
+    _ensure_column(cur, "answers", "evaluation_json", "TEXT")
     conn.commit()
     conn.close()
+    logger.info("SQLite schema ready at %s", DB_PATH)
 
 
 def _ensure_column(cur: sqlite3.Cursor, table: str, column: str, column_type: str) -> None:
     existing_columns = {row[1] for row in cur.execute(f"PRAGMA table_info({table})").fetchall()}
     if column not in existing_columns:
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+        logger.warning("Added missing SQLite column %s.%s (%s)", table, column, column_type)
