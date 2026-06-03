@@ -6,7 +6,7 @@ import uuid
 from fastapi import HTTPException
 
 from app.logging_utils import color_request_log
-from app.schemas import AnswerEvaluation, AnswerRequest, FinishRequest, LearningCard, RoundSummary, StartRequest, StartResponse
+from app.schemas import AnswerEvaluation, AnswerRequest, FinishRequest, LearningCard, RoundSummary, SearchResult, StartRequest, StartResponse
 from app.workflow.graph import WorkflowDeps, build_answer_graph, build_finish_graph, build_start_graph
 
 
@@ -35,7 +35,8 @@ class AgentService:
         cards = [LearningCard(**c) for c in state.get("cards", [])]
         if not cards:
             raise HTTPException(status_code=400, detail="No cards returned from workflow")
-        return StartResponse(sessionId=session_id, cards=cards)
+        source_articles = [SearchResult(**result) for result in state.get("search_results", [])]
+        return StartResponse(sessionId=session_id, cards=cards, sourceArticles=source_articles)
 
     def answer(self, req: AnswerRequest) -> AnswerEvaluation:
         graph_payload = {

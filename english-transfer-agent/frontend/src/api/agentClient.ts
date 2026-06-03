@@ -53,9 +53,18 @@ export type AnswerEvaluation = {
   nextAction: NextAction;
 };
 
+export type SourceArticle = {
+  title: string;
+  url: string;
+  content: string;
+  snippet: string;
+  site: string;
+};
+
 export type StartResponse = {
   sessionId: string;
   cards: LearningCard[];
+  sourceArticles?: SourceArticle[];
 };
 
 export type RoundSummary = {

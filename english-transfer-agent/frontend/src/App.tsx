@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ApiRequestError, startAgent, type LearningCard } from './api/agentClient';
+import { ApiRequestError, startAgent, type LearningCard, type SourceArticle } from './api/agentClient';
 import StudySession from './components/StudySession';
 import './styles.css';
 
@@ -63,6 +63,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [cards, setCards] = useState<LearningCard[]>([]);
+  const [sourceArticles, setSourceArticles] = useState<SourceArticle[]>([]);
   const [error, setError] = useState<UserFacingError | null>(null);
   const [activityIndex, setActivityIndex] = useState(0);
 
@@ -84,6 +85,7 @@ export default function App() {
     try {
       const data = await startAgent(selectedTopic);
       setCards(data.cards);
+      setSourceArticles(data.sourceArticles ?? []);
       setSessionId(data.sessionId);
     } catch (err) {
       const describedError = describeError(err, 'Build practice round');
@@ -162,7 +164,7 @@ export default function App() {
       )}
 
       {sessionId && cards.length > 0 ? (
-        <StudySession key={sessionId} sessionId={sessionId} cards={cards} onStartAnotherRound={generate} />
+        <StudySession key={sessionId} sessionId={sessionId} cards={cards} sourceArticles={sourceArticles} onStartAnotherRound={generate} />
       ) : (
         !loading && <section className="empty-state">Generate a round to reveal the first stacked learning card.</section>
       )}

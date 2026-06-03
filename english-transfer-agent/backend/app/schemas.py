@@ -96,6 +96,7 @@ class StartRequest(BaseModel):
 class StartResponse(BaseModel):
     sessionId: str
     cards: list[LearningCard]
+    sourceArticles: list[SearchResult] = Field(default_factory=list)
 
 
 class AnswerRequest(BaseModel):
