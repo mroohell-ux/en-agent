@@ -137,3 +137,118 @@ details.reveal summary { cursor: pointer; font-weight: 850; color: #5b21b6; }
 .activity-row.failed .step-status { background: #fee2e2; color: #991b1b; }
 .activity-history { margin-bottom: 16px; }
 .activity-row { margin: 9px 0 0; line-height: 1.5; }
+
+/* Teacher-guided active card refinements */
+.card-stack {
+  gap: 10px;
+}
+
+.collapsed-card-stack {
+  display: grid;
+  gap: 8px;
+  margin-top: -2px;
+  padding: 0 10px;
+}
+
+.stack-preview {
+  position: relative;
+  min-height: 74px;
+  padding: 13px 16px;
+  border: 1px solid rgba(91, 63, 35, 0.1);
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.92), rgba(248, 241, 232, 0.86));
+  box-shadow: 0 10px 22px rgba(65, 44, 23, 0.08);
+}
+
+.stack-preview + .stack-preview {
+  margin-top: -2px;
+}
+
+.stack-preview.locked {
+  background: rgba(246, 239, 229, 0.72);
+}
+
+.preview-card-number {
+  display: inline-flex;
+  margin-right: 8px;
+  color: #8a7a6a;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.learning-card {
+  position: relative;
+  z-index: 1;
+  border: 2px solid rgba(124, 58, 237, 0.12);
+}
+
+.score-chip {
+  opacity: 0.72;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.teacher-feedback {
+  gap: 10px;
+}
+
+.teacher-panel,
+.teacher-row.your-answer,
+.teacher-row.main-fix,
+.teacher-row.better-answer {
+  background: #fffaf2;
+}
+
+.teacher-row.your-answer {
+  border-left: 4px solid #d6b27a;
+}
+
+.teacher-panel {
+  background: #fff7ea;
+}
+
+.teacher-diagnosis {
+  display: grid;
+  gap: 10px;
+}
+
+.teacher-diagnosis > div {
+  padding: 13px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(90, 61, 32, 0.07);
+}
+
+.teacher-diagnosis p {
+  margin: 7px 0 0;
+  line-height: 1.55;
+}
+
+.main-fix {
+  border-left: 4px solid #f59e0b;
+}
+
+.better-answer {
+  border-left: 4px solid #22c55e;
+}
+
+.advanced-details {
+  margin-top: 2px;
+}
+
+.retry-area {
+  border: 2px solid rgba(124, 58, 237, 0.16);
+}
+
+.retry-area .kicker::after {
+  content: ' → teacher diagnosis → retry';
+  color: #8a6d3b;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 800;
+}
+
+@media (min-width: 760px) {
+  .teacher-diagnosis {
+    grid-template-columns: 1fr 1fr;
+  }
+}
