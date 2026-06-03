@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 from abc import ABC, abstractmethod
@@ -8,6 +9,16 @@ from urllib.parse import urlparse
 import httpx
 
 from app.schemas import SearchResult
+
+
+logger = logging.getLogger(__name__)
+
+
+def _redact_search_payload(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        key: ("[REDACTED]" if key == "api_key" else value)
+        for key, value in payload.items()
+    }
 
 
 PRESET_ARTICLE_DOMAINS = [
@@ -249,6 +260,7 @@ class TavilySearchProvider(SearchProvider):
 
     def search(self, query: str, max_results: int) -> list[SearchResult]:
         if not self.api_key:
+            logger.info("Tavily API key missing; sending search to MockSearchProvider query=%s max_results=%s", query, max_results)
             return MockSearchProvider().search(query, max_results)
 
         excluded_domains = _domains_from_env("TAVILY_EXCLUDE_DOMAINS", DEFAULT_EXCLUDED_DOMAINS)
@@ -428,14 +440,19 @@ class TavilySearchProvider(SearchProvider):
         if include_domains:
             payload["include_domains"] = include_domains
 
+        url = "https://api.tavily.com/search"
+        logger.info("Search HTTP request -> url=%s query=%s max_results=%s include_domains=%s", url, query, raw_result_count, include_domains)
+        logger.debug("Search HTTP request payload=%s", _redact_search_payload(payload))
         response = httpx.post(
-            "https://api.tavily.com/search",
+            url,
             json=payload,
             timeout=20,
         )
+        logger.info("Search HTTP response <- url=%s status=%s", url, response.status_code)
         response.raise_for_status()
 
         data = response.json()
+        logger.debug("Search HTTP response payload=%s", data)
         output: list[SearchResult] = []
         rejected: list[dict[str, str]] = []
 
@@ -476,6 +493,11 @@ class TavilySearchProvider(SearchProvider):
 
         output.sort(key=lambda r: _word_count(r.content), reverse=True)
 
+        logger.debug(
+            "Search filtered payload accepted=%s rejected=%s",
+            [result.model_dump() for result in output[:max_results]],
+            rejected,
+        )
         return output[:max_results], rejected
 
 

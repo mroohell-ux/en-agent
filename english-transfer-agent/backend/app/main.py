@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -16,6 +17,18 @@ from app.services.agent_service import AgentService
 load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
+
+
+def _request_payload(req: Any) -> dict[str, Any]:
+    if hasattr(req, "model_dump"):
+        return req.model_dump()
+    return dict(req)
+
+
+def _log_api_request(path: str, req: Any) -> None:
+    payload = _request_payload(req)
+    logger.info("POST %s -> AgentService payload=%s", path, payload)
+    logger.debug("POST %s request payload detail=%s", path, payload)
 
 
 def _get_cors_origins() -> list[str]:
@@ -51,17 +64,17 @@ def startup() -> None:
 
 @app.post("/agent/start")
 def start_agent(req: StartRequest):
-    logger.info("POST /agent/start topic=%s level=%s user=%s", req.topic, req.level, req.userId)
+    _log_api_request("/agent/start", req)
     return agent_service.start(req)
 
 
 @app.post("/agent/answer")
 def answer_agent(req: AnswerRequest):
-    logger.info("POST /agent/answer session=%s card=%s attempt=%s", req.sessionId, req.cardId, req.attemptNumber)
+    _log_api_request("/agent/answer", req)
     return agent_service.answer(req)
 
 
 @app.post("/agent/finish")
 def finish_agent(req: FinishRequest):
-    logger.info("POST /agent/finish session=%s", req.sessionId)
+    _log_api_request("/agent/finish", req)
     return agent_service.finish(req)

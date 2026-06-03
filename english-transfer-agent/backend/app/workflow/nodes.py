@@ -34,12 +34,15 @@ def build_search_query(state, deps):
         f"engaging real-world feature article or essay about {topic_text}; "
         "ordinary educated readers; useful language patterns; not ESL or simplified learner material"
     )
+    logger.debug("Built search query for topic=%s level=%s query=%s", state.get("topic"), state.get("level"), query)
     return {"search_query": query}
 
 
 def search_material_with_tavily(state, deps):
+    logger.info("Search provider request -> %s query=%s max_results=%s", deps.search_provider.__class__.__name__, state["search_query"], 5)
     results = deps.search_provider.search(state["search_query"], max_results=5)
     search_results = [r.model_dump() for r in results]
+    logger.debug("Search provider response payload=%s", search_results)
     dump_path = _dump_search_material(state, search_results)
     logger.info("Saved raw search material to %s", dump_path)
     return {"search_results": search_results, "search_dump_path": str(dump_path)}
@@ -51,8 +54,12 @@ def generate_learning_cards(state, deps):
         level=state["level"],
         search_results=state.get("search_results", []),
     )
+    logger.info("AI provider request -> %s operation=generate_cards prompt_chars=%s", deps.ai_provider.__class__.__name__, len(prompt))
+    logger.debug("Card generation prompt payload=%s", prompt)
     card_set = deps.ai_provider.generate_cards(prompt)
-    return {"cards": [c.model_dump() for c in card_set.cards]}
+    cards = [c.model_dump() for c in card_set.cards]
+    logger.debug("AI provider generate_cards response payload=%s", cards)
+    return {"cards": cards}
 
 
 def validate_cards(state, deps):
@@ -120,7 +127,10 @@ def load_session_and_card(state, deps):
 
 def evaluate_answer(state, deps):
     prompt = build_evaluation_prompt(state["current_card"], state["user_answer"])
+    logger.info("AI provider request -> %s operation=evaluate_answer session=%s card=%s prompt_chars=%s", deps.ai_provider.__class__.__name__, state.get("session_id"), state.get("card_id"), len(prompt))
+    logger.debug("Evaluation prompt payload=%s", prompt)
     evaluation = deps.ai_provider.evaluate_answer(prompt).model_dump()
+    logger.debug("AI provider evaluate_answer response payload=%s", evaluation)
     if state.get("is_last_card") and evaluation.get("targetUsed") and int(evaluation.get("score", 0) or 0) >= 80:
         evaluation["nextAction"] = "finish_round"
         evaluation["followUpPromptChinese"] = None
@@ -190,8 +200,12 @@ def load_round_data(state, deps):
 
 def summarize_round(state, deps):
     prompt = build_round_summary_prompt(state["round_data"])
+    logger.info("AI provider request -> %s operation=summarize_round session=%s prompt_chars=%s", deps.ai_provider.__class__.__name__, state.get("session_id"), len(prompt))
+    logger.debug("Round summary prompt payload=%s", prompt)
     summary = deps.ai_provider.summarize_round(prompt)
-    return {"round_summary": summary.model_dump()}
+    summary_payload = summary.model_dump()
+    logger.debug("AI provider summarize_round response payload=%s", summary_payload)
+    return {"round_summary": summary_payload}
 
 
 def save_round_summary(state, deps):

@@ -114,18 +114,50 @@ async function readErrorDetail(res: Response): Promise<ApiErrorDetail> {
 }
 
 async function postJson<TResponse, TBody extends Record<string, unknown>>(path: string, body: TBody): Promise<TResponse> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = `${API_BASE}${path}`;
+  const requestPayload = JSON.stringify(body);
+
+  console.debug('[agent-api] sending request', {
+    method: 'POST',
+    path,
+    url,
+    headers: { 'Content-Type': 'application/json' },
+    payload: body,
+    serializedPayload: requestPayload,
+  });
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: requestPayload,
   });
 
   if (!res.ok) {
     const detail = await readErrorDetail(res);
+    console.error('[agent-api] request failed', {
+      method: 'POST',
+      path,
+      url,
+      status: res.status,
+      statusText: res.statusText,
+      requestPayload: body,
+      errorDetail: detail,
+    });
     throw new ApiRequestError(`Request failed (${res.status}) for ${path}`, detail);
   }
 
-  return res.json();
+  const responsePayload = (await res.json()) as TResponse;
+  console.debug('[agent-api] received response', {
+    method: 'POST',
+    path,
+    url,
+    status: res.status,
+    statusText: res.statusText,
+    requestPayload: body,
+    responsePayload,
+  });
+
+  return responsePayload;
 }
 
 export function startAgent(topic: string) {
