@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html as html_lib
 import logging
 import os
 import re
@@ -96,6 +97,93 @@ BAD_LEVEL_TOKENS = [
     "c1",
     "c2",
 ]
+
+ARTICLE_BLOCK_RE = re.compile(r"<(article|main)\b[^>]*>(.*?)</\1>", re.IGNORECASE | re.DOTALL)
+BODY_RE = re.compile(r"<body\b[^>]*>(.*?)</body>", re.IGNORECASE | re.DOTALL)
+DROP_TAG_RE = re.compile(
+    r"<(script|style|noscript|svg|form|nav|footer|header|aside|iframe)\b[^>]*>.*?</\1>",
+    re.IGNORECASE | re.DOTALL,
+)
+BLOCK_BREAK_RE = re.compile(r"</?(p|br|div|section|h[1-6]|li|blockquote)\b[^>]*>", re.IGNORECASE)
+TAG_RE = re.compile(r"<[^>]+>")
+WHITESPACE_RE = re.compile(r"[ \t\r\f\v]+")
+
+BOILERPLATE_PATTERNS = [
+    "the https:// ensures that you are connecting",
+    "any information you provide is encrypted and transmitted securely",
+    "share sensitive information only on official",
+    "before sharing sensitive information",
+    "skip to main content",
+    "back to top",
+]
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    configured = os.getenv(name, "").strip().lower()
+    if not configured:
+        return default
+    return configured in {"1", "true", "yes", "on"}
+
+
+def _clean_article_text(text: str) -> str:
+    cleaned_lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = WHITESPACE_RE.sub(" ", raw_line).strip()
+        if not line:
+            continue
+
+        line_l = line.lower()
+        if any(pattern in line_l for pattern in BOILERPLATE_PATTERNS):
+            continue
+
+        cleaned_lines.append(line)
+
+    return "\n\n".join(cleaned_lines)
+
+
+def _html_fragment_to_text(fragment: str) -> str:
+    without_noise = DROP_TAG_RE.sub(" ", fragment)
+    with_breaks = BLOCK_BREAK_RE.sub("\n", without_noise)
+    without_tags = TAG_RE.sub(" ", with_breaks)
+    decoded = html_lib.unescape(without_tags)
+    return _clean_article_text(decoded)
+
+
+def _extract_main_article_body(html: str) -> str:
+    candidates = [match.group(2) for match in ARTICLE_BLOCK_RE.finditer(html)]
+
+    if not candidates:
+        body_match = BODY_RE.search(html)
+        candidates = [body_match.group(1)] if body_match else [html]
+
+    candidate_texts = [_html_fragment_to_text(candidate) for candidate in candidates]
+    candidate_texts = [text for text in candidate_texts if text.strip()]
+
+    if not candidate_texts:
+        return ""
+
+    return max(candidate_texts, key=_word_count)
+
+
+def _fetch_main_article_body(url: str, timeout: float) -> str:
+    response = httpx.get(
+        url,
+        follow_redirects=True,
+        timeout=timeout,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (compatible; EnglishTransferAgent/1.0; "
+                "+https://example.com/english-transfer-agent)"
+            ),
+        },
+    )
+    response.raise_for_status()
+
+    content_type = response.headers.get("content-type", "").lower()
+    if "html" not in content_type:
+        return ""
+
+    return _extract_main_article_body(response.text)
 
 
 def _domains_from_env(name: str, fallback: list[str]) -> list[str]:
@@ -253,6 +341,8 @@ class TavilySearchProvider(SearchProvider):
     - TAVILY_SEARCH_DEPTH=basic|advanced
     - TAVILY_MIN_CONTENT_WORDS=60
     - TAVILY_MAX_RAW_RESULTS=15
+    - TAVILY_FETCH_MAIN_ARTICLE=true
+    - ARTICLE_FETCH_TIMEOUT_SECONDS=12
     """
 
     def __init__(self) -> None:
@@ -271,6 +361,8 @@ class TavilySearchProvider(SearchProvider):
         search_depth = os.getenv("TAVILY_SEARCH_DEPTH", "basic").strip().lower()
         min_content_words = int(os.getenv("TAVILY_MIN_CONTENT_WORDS", "60"))
         raw_result_count = int(os.getenv("TAVILY_MAX_RAW_RESULTS", str(max(max_results * 3, 15))))
+        fetch_main_article = _env_flag("TAVILY_FETCH_MAIN_ARTICLE", True)
+        article_fetch_timeout = float(os.getenv("ARTICLE_FETCH_TIMEOUT_SECONDS", "12"))
 
         query_variants = self._build_query_variants(query)
         search_plan = self._build_search_plan(
@@ -292,6 +384,8 @@ class TavilySearchProvider(SearchProvider):
                 exclude_domains=excluded_domains,
                 include_domains=include_domains,
                 min_content_words=min_content_words,
+                fetch_main_article=fetch_main_article,
+                article_fetch_timeout=article_fetch_timeout,
             )
 
             added = 0
@@ -427,6 +521,8 @@ class TavilySearchProvider(SearchProvider):
         exclude_domains: list[str],
         include_domains: list[str] | None,
         min_content_words: int,
+        fetch_main_article: bool,
+        article_fetch_timeout: float,
     ) -> tuple[list[SearchResult], list[dict[str, str]]]:
         payload: dict[str, object] = {
             "api_key": self.api_key,
@@ -434,7 +530,7 @@ class TavilySearchProvider(SearchProvider):
             "max_results": raw_result_count,
             "search_depth": search_depth,
             "include_answer": False,
-            "include_raw_content": False,
+            "include_raw_content": True,
             "exclude_domains": exclude_domains,
         }
 
@@ -460,8 +556,20 @@ class TavilySearchProvider(SearchProvider):
         for item in data.get("results", []):
             title = item.get("title", "") or ""
             url = item.get("url", "") or ""
-            content = item.get("content", "") or ""
+            tavily_content = item.get("raw_content") or item.get("content", "") or ""
             site = _site_from_url(url) if url else ""
+            content_source = "tavily_raw_content" if item.get("raw_content") else "tavily_content"
+            content = _clean_article_text(str(tavily_content))
+
+            if fetch_main_article and url:
+                try:
+                    fetched_content = _fetch_main_article_body(url, article_fetch_timeout)
+                except (httpx.HTTPError, ValueError) as exc:
+                    logger.debug("Could not fetch main article body url=%s error=%s", url, exc)
+                else:
+                    if _word_count(fetched_content) >= min_content_words:
+                        content = fetched_content
+                        content_source = "fetched_main_article_body"
 
             reason = _rejection_reason(
                 title=title,
@@ -478,6 +586,7 @@ class TavilySearchProvider(SearchProvider):
                         "url": url,
                         "site": site,
                         "reason": reason,
+                        "content_source": content_source,
                     }
                 )
                 continue
@@ -491,6 +600,7 @@ class TavilySearchProvider(SearchProvider):
                     site=site,
                 )
             )
+            logger.debug("Accepted search result url=%s content_source=%s words=%s", url, content_source, _word_count(content))
 
         output.sort(key=lambda r: _word_count(r.content), reverse=True)
 
