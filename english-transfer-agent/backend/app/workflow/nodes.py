@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -27,6 +28,25 @@ REQUIRED_CARD_FIELDS = {
     "expectedAnswer",
     "mustContain",
 }
+
+
+def _normalize_text_for_matching(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
+
+
+def _is_exact_article_excerpt(excerpt: str, search_results: list[dict]) -> bool:
+    normalized_excerpt = _normalize_text_for_matching(excerpt)
+    if not normalized_excerpt:
+        return False
+
+    return any(
+        normalized_excerpt in _normalize_text_for_matching(str(result.get("content", "")))
+        for result in search_results
+    )
+
+
+def _same_text(left: str, right: str) -> bool:
+    return _normalize_text_for_matching(left) == _normalize_text_for_matching(right)
 
 
 def build_search_query(state, deps):
@@ -74,6 +94,7 @@ def generate_learning_cards(state, deps):
 
 def validate_cards(state, deps):
     valid_cards: list[dict] = []
+    search_results = state.get("search_results", [])
     for card in state.get("cards", []):
         if len(valid_cards) >= 10:
             break
@@ -81,9 +102,21 @@ def validate_cards(state, deps):
             continue
         if not str(card.get("target", "")).strip() or not str(card.get("chinesePrompt", "")).strip():
             continue
+
+        original_reference = str(card.get("originalReference", ""))
+        expected_answer = str(card.get("expectedAnswer", ""))
+        if not _is_exact_article_excerpt(original_reference, search_results):
+            logger.warning("Rejected card because originalReference is not an exact article excerpt title=%s", card.get("title"))
+            continue
+
+        if not _same_text(expected_answer, original_reference):
+            logger.warning("Adjusted card expectedAnswer to exact originalReference title=%s", card.get("title"))
+            card = dict(card)
+            card["expectedAnswer"] = original_reference
+
         valid_cards.append(card)
     if not valid_cards:
-        raise HTTPException(status_code=400, detail="No valid cards generated")
+        raise HTTPException(status_code=400, detail="No valid cards generated from exact article excerpts")
     return {"filtered_cards": valid_cards}
 
 
