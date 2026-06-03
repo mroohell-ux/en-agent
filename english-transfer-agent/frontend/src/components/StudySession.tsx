@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { answer, finishRound, type AnswerEvaluation, type LearningCard, type NextAction, type RoundSummary } from '../api/agentClient';
+import { ApiRequestError, answer, finishRound, type AnswerEvaluation, type LearningCard, type NextAction, type RoundSummary } from '../api/agentClient';
 import CardStack from './CardStack';
 import RoundSummaryCard from './RoundSummaryCard';
 
@@ -20,6 +20,22 @@ export type CardInteractionState = {
   attempts: CardAttempt[];
   latestEvaluation?: AnswerEvaluation;
 };
+
+function formatError(err: unknown, fallbackStep: string) {
+  if (err instanceof ApiRequestError) {
+    return `Could not finish this step. Step: ${err.step || fallbackStep}. Root cause: ${err.rootCause}`;
+  }
+
+  if (err instanceof TypeError) {
+    return 'Could not finish this step. Step: Connect to backend. Root cause: The frontend could not reach the API server.';
+  }
+
+  if (err instanceof Error) {
+    return `Could not finish this step. Step: ${fallbackStep}. Root cause: ${err.message}`;
+  }
+
+  return `Could not finish this step. Step: ${fallbackStep}. Root cause: Something unexpected happened.`;
+}
 
 type Props = {
   sessionId: string;
@@ -112,7 +128,7 @@ export default function StudySession({ sessionId, cards, onStartAnotherRound }: 
         },
       }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not evaluate this answer.');
+      setError(formatError(err, 'Evaluate your answer'));
     } finally {
       setSubmittingCardId(null);
     }
@@ -149,7 +165,7 @@ export default function StudySession({ sessionId, cards, onStartAnotherRound }: 
     try {
       setSummary(await finishRound(sessionId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not finish this round.');
+      setError(formatError(err, 'Summarize your round'));
     } finally {
       setFinishing(false);
     }
