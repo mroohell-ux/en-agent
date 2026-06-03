@@ -51,9 +51,9 @@ def _same_text(left: str, right: str) -> bool:
 
 def build_search_query(state, deps):
     query = (
-        "engaging real-world feature article or essay for ordinary educated readers; "
-        "science culture technology psychology lifestyle; "
-        "useful language patterns; not ESL or simplified learner material"
+        "feature article for general readers; "
+        "science culture technology psychology lifestyle arts food sports stories; "
+        "real-world publication with clear useful language"
     )
     logger.debug("Built search query level=%s query=%s", state.get("level"), query)
     return {"search_query": query}

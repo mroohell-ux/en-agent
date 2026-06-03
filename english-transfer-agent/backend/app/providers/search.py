@@ -265,6 +265,32 @@ def _domains_from_env(name: str, fallback: list[str]) -> list[str]:
     return [domain.strip().lower() for domain in configured.split(",") if domain.strip()]
 
 
+def _int_from_env(name: str, default: int, minimum: int = 1) -> int:
+    configured = os.getenv(name, "").strip()
+    if not configured:
+        return default
+
+    try:
+        return max(int(configured), minimum)
+    except ValueError:
+        logger.warning("Invalid integer env %s=%r; using default=%s", name, configured, default)
+        return default
+
+
+def _domain_batches(domains: list[str], batch_size: int) -> list[list[str]]:
+    if not domains:
+        return []
+
+    return [domains[index:index + batch_size] for index in range(0, len(domains), batch_size)]
+
+
+def _summarize_domains(domains: list[str] | None) -> list[str] | None:
+    if not domains or len(domains) <= 5:
+        return domains
+
+    return domains[:5] + [f"...+{len(domains) - 5} more"]
+
+
 def _site_from_url(url: str) -> str:
     host = urlparse(url).netloc.lower()
     return host.removeprefix("www.")
@@ -427,6 +453,8 @@ class TavilySearchProvider(SearchProvider):
       preferred: preferred domains first, broad search as fallback (default)
       open: broad search first, preferred domains as fallback
     - TAVILY_INCLUDE_DOMAINS=domain1,domain2
+    - TAVILY_INCLUDE_DOMAIN_BATCH_SIZE=12
+    - TAVILY_PREFERRED_QUERY_VARIANTS=2
     - TAVILY_EXCLUDE_DOMAINS=domain1,domain2
     - TAVILY_SEARCH_DEPTH=basic|advanced
     - TAVILY_MIN_CONTENT_WORDS=60
@@ -451,6 +479,8 @@ class TavilySearchProvider(SearchProvider):
 
         excluded_domains = _domains_from_env("TAVILY_EXCLUDE_DOMAINS", DEFAULT_EXCLUDED_DOMAINS)
         preferred_domains = _domains_from_env("TAVILY_INCLUDE_DOMAINS", PRESET_ARTICLE_DOMAINS)
+        preferred_domain_batch_size = _int_from_env("TAVILY_INCLUDE_DOMAIN_BATCH_SIZE", 12)
+        preferred_query_variants = _int_from_env("TAVILY_PREFERRED_QUERY_VARIANTS", 2)
 
         source_mode = os.getenv("ARTICLE_SOURCE_MODE", "preferred").strip().lower()
         search_depth = os.getenv("TAVILY_SEARCH_DEPTH", "basic").strip().lower()
@@ -468,6 +498,8 @@ class TavilySearchProvider(SearchProvider):
             query_variants=query_variants,
             preferred_domains=preferred_domains,
             source_mode=source_mode,
+            preferred_domain_batch_size=preferred_domain_batch_size,
+            preferred_query_variants=preferred_query_variants,
         )
 
         collected: list[SearchResult] = []
@@ -508,7 +540,8 @@ class TavilySearchProvider(SearchProvider):
                 {
                     "mode": mode,
                     "query": query_variant,
-                    "include_domains": include_domains,
+                    "include_domains": _summarize_domains(include_domains),
+                    "include_domains_count": len(include_domains) if include_domains else 0,
                     "usable_count": len(results),
                     "added_count": added,
                     "total_collected": len(collected),
@@ -544,21 +577,31 @@ class TavilySearchProvider(SearchProvider):
         query_variants: list[str],
         preferred_domains: list[str],
         source_mode: str,
+        preferred_domain_batch_size: int,
+        preferred_query_variants: int,
     ) -> list[tuple[str, list[str] | None, str]]:
         search_plan: list[tuple[str, list[str] | None, str]] = []
+        preferred_batches = _domain_batches(preferred_domains, preferred_domain_batch_size)
+        preferred_queries = query_variants[:preferred_query_variants] or query_variants
 
         if source_mode == "open":
             for query_variant in query_variants:
                 search_plan.append((query_variant, None, "broad"))
 
-            for query_variant in query_variants:
-                search_plan.append((query_variant, preferred_domains, "preferred_domains_fallback"))
+            for batch_index, domain_batch in enumerate(preferred_batches, start=1):
+                for query_variant in preferred_queries:
+                    search_plan.append(
+                        (query_variant, domain_batch, f"preferred_domains_fallback_batch_{batch_index}")
+                    )
 
             return search_plan
 
-        # Default: preferred article domains first, then broad search as fallback.
-        for query_variant in query_variants:
-            search_plan.append((query_variant, preferred_domains, "preferred_domains"))
+        # Default: try preferred article domains in smaller batches first. A very large
+        # include_domains list can make Tavily return no results, even when a source
+        # in that list has relevant articles.
+        for batch_index, domain_batch in enumerate(preferred_batches, start=1):
+            for query_variant in preferred_queries:
+                search_plan.append((query_variant, domain_batch, f"preferred_domains_batch_{batch_index}"))
 
         for query_variant in query_variants:
             search_plan.append((query_variant, None, "broad_fallback"))
@@ -570,15 +613,9 @@ class TavilySearchProvider(SearchProvider):
 
         return [
             cleaned,
-            f"{cleaned} engaging article for general readers clear writing",
-            (
-                "engaging general-reader article about science culture technology "
-                "psychology health environment modern life clear writing"
-            ),
-            (
-                "interesting public-facing article about discovery human behavior "
-                "technology culture environment clear prose"
-            ),
+            "feature article science culture technology psychology lifestyle",
+            "longform story human interest technology culture science food sports",
+            "news feature arts food sports culture science clear writing",
         ]
 
     def _clean_query(self, query: str) -> str:
@@ -602,6 +639,7 @@ class TavilySearchProvider(SearchProvider):
             "ielts",
             "toefl",
             "grammar lesson",
+            "or essay",
             "essay",
         ]
 
@@ -609,6 +647,7 @@ class TavilySearchProvider(SearchProvider):
             cleaned = re.sub(re.escape(phrase), "", cleaned, flags=re.IGNORECASE)
 
         cleaned = re.sub(r"[;|]", " ", cleaned)
+        cleaned = re.sub(r"\bor\s+(?=for\b)", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
         if not cleaned:
@@ -647,7 +686,15 @@ class TavilySearchProvider(SearchProvider):
             payload["include_domains"] = include_domains
 
         url = "https://api.tavily.com/search"
-        logger.info(color_request_log("Search HTTP request -> url=%s query=%s max_results=%s include_domains=%s"), url, query, raw_result_count, include_domains)
+        include_domains_log = _summarize_domains(include_domains)
+        logger.info(
+            color_request_log("Search HTTP request -> url=%s query=%s max_results=%s include_domains_count=%s include_domains=%s"),
+            url,
+            query,
+            raw_result_count,
+            len(include_domains) if include_domains else 0,
+            include_domains_log,
+        )
         logger.debug(color_request_log("Search HTTP request payload=%s"), _redact_search_payload(payload))
         try:
             response = httpx.post(
