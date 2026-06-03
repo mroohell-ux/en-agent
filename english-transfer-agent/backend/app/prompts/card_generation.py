@@ -8,7 +8,7 @@ def build_card_generation_prompt(topic: str, level: str, search_results: list[di
         "You are an English learning agent.\n\n"
         "The user can often understand English, but cannot actively use expressions.\n"
         "Your job: convert searched English references into active transfer cards.\n\n"
-        f"Topic: {topic}\n"
+        f"Round source focus: {topic}\n"
         "Source preference: real-world English articles for ordinary educated readers; do not simplify by reading level.\n"
         f"SearchResults(JSON): {json.dumps(search_results, ensure_ascii=False)}\n\n"
         "Rules:\n"

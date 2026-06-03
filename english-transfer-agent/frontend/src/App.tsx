@@ -59,7 +59,6 @@ function describeError(err: unknown, fallbackStep: string): UserFacingError {
 }
 
 export default function App() {
-  const [topic, setTopic] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [cards, setCards] = useState<LearningCard[]>([]);
@@ -78,12 +77,11 @@ export default function App() {
   }, [loading]);
 
   const generate = async () => {
-    const selectedTopic = topic.trim() || 'random';
     setLoading(true);
     setActivityIndex(0);
     setError(null);
     try {
-      const data = await startAgent(selectedTopic);
+      const data = await startAgent();
       setCards(data.cards);
       setSourceArticles(data.sourceArticles ?? []);
       setSessionId(data.sessionId);
@@ -110,24 +108,10 @@ export default function App() {
             </p>
           </div>
 
-          <div className="start-panel">
-            <label className="topic-label" htmlFor="practice-topic">Practice topic</label>
-            <select
-              id="practice-topic"
-              className="topic-input topic-select"
-              value={topic}
-              onChange={(event) => setTopic(event.target.value)}
-              aria-describedby="practice-topic-help"
-            >
-              <option value="">Surprise me</option>
-              <option value="technology">Technology</option>
-              <option value="culture">Culture</option>
-              <option value="science">Science</option>
-              <option value="psychology">Psychology</option>
-              <option value="lifestyle">Lifestyle</option>
-            </select>
-            <p className="topic-help" id="practice-topic-help">
-              This chooses the source material for your practice cards. “Surprise me” picks a random topic.
+          <div className="start-panel compact-start-panel">
+            <p className="start-label">Ready for one real-world article</p>
+            <p className="start-help">
+              We’ll pick one fresh source from preferred article domains first, then search more broadly only if needed.
             </p>
             <button className="primary-button" onClick={generate} disabled={loading}>
               {loading ? 'Preparing cards…' : 'Generate cards'}

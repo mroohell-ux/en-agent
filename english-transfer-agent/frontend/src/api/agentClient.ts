@@ -172,9 +172,8 @@ async function postJson<TResponse, TBody extends Record<string, unknown>>(path: 
   return responsePayload;
 }
 
-export function startAgent(topic: string) {
+export function startAgent() {
   return postJson<StartResponse, Record<string, unknown>>('/agent/start', {
-    topic,
     userId: 'default-user',
   });
 }

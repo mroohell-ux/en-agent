@@ -26,7 +26,7 @@ class AgentService:
             "mode": "start",
             "user_id": req.userId,
             "session_id": session_id,
-            "topic": req.topic,
+            "topic": "general",
             "level": req.level,
         }
         logger.debug(color_request_log("Invoking start workflow payload=%s"), graph_payload)

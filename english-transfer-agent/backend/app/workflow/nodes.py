@@ -50,13 +50,12 @@ def _same_text(left: str, right: str) -> bool:
 
 
 def build_search_query(state, deps):
-    topic = state["topic"]
-    topic_text = "science culture technology psychology lifestyle" if topic == "random" else topic
     query = (
-        f"engaging real-world feature article or essay about {topic_text}; "
-        "ordinary educated readers; useful language patterns; not ESL or simplified learner material"
+        "engaging real-world feature article or essay for ordinary educated readers; "
+        "science culture technology psychology lifestyle; "
+        "useful language patterns; not ESL or simplified learner material"
     )
-    logger.debug("Built search query for topic=%s level=%s query=%s", state.get("topic"), state.get("level"), query)
+    logger.debug("Built search query level=%s query=%s", state.get("level"), query)
     return {"search_query": query}
 
 

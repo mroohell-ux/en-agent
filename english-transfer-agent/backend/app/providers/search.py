@@ -382,9 +382,9 @@ class TavilySearchProvider(SearchProvider):
 
     Environment variables:
     - TAVILY_API_KEY
-    - ARTICLE_SOURCE_MODE=open|preferred
+    - ARTICLE_SOURCE_MODE=preferred|open
+      preferred: preferred domains first, broad search as fallback (default)
       open: broad search first, preferred domains as fallback
-      preferred: preferred domains first, broad search as fallback
     - TAVILY_INCLUDE_DOMAINS=domain1,domain2
     - TAVILY_EXCLUDE_DOMAINS=domain1,domain2
     - TAVILY_SEARCH_DEPTH=basic|advanced
@@ -411,7 +411,7 @@ class TavilySearchProvider(SearchProvider):
         excluded_domains = _domains_from_env("TAVILY_EXCLUDE_DOMAINS", DEFAULT_EXCLUDED_DOMAINS)
         preferred_domains = _domains_from_env("TAVILY_INCLUDE_DOMAINS", PRESET_ARTICLE_DOMAINS)
 
-        source_mode = os.getenv("ARTICLE_SOURCE_MODE", "open").strip().lower()
+        source_mode = os.getenv("ARTICLE_SOURCE_MODE", "preferred").strip().lower()
         search_depth = os.getenv("TAVILY_SEARCH_DEPTH", "basic").strip().lower()
         min_content_words = int(os.getenv("TAVILY_MIN_CONTENT_WORDS", "60"))
         raw_result_count = int(os.getenv("TAVILY_MAX_RAW_RESULTS", str(max(max_results * 3, 15))))
@@ -494,7 +494,7 @@ class TavilySearchProvider(SearchProvider):
 
         raise RuntimeError(
             "Tavily returned no usable natural article pages after filtering. "
-            "Try a broader topic or reduce filtering. Debug attempts: "
+            "Try broader search settings or reduce filtering. Debug attempts: "
             + str(attempts)
         )
 
@@ -506,22 +506,21 @@ class TavilySearchProvider(SearchProvider):
     ) -> list[tuple[str, list[str] | None, str]]:
         search_plan: list[tuple[str, list[str] | None, str]] = []
 
-        if source_mode == "preferred":
+        if source_mode == "open":
             for query_variant in query_variants:
-                search_plan.append((query_variant, preferred_domains, "preferred_domains"))
+                search_plan.append((query_variant, None, "broad"))
 
             for query_variant in query_variants:
-                search_plan.append((query_variant, None, "broad_fallback"))
+                search_plan.append((query_variant, preferred_domains, "preferred_domains_fallback"))
 
             return search_plan
 
-        # Default: broad search first.
+        # Default: preferred article domains first, then broad search as fallback.
         for query_variant in query_variants:
-            search_plan.append((query_variant, None, "broad"))
+            search_plan.append((query_variant, preferred_domains, "preferred_domains"))
 
-        # Then try preferred domains if broad search does not collect enough.
         for query_variant in query_variants:
-            search_plan.append((query_variant, preferred_domains, "preferred_domains_fallback"))
+            search_plan.append((query_variant, None, "broad_fallback"))
 
         return search_plan
 

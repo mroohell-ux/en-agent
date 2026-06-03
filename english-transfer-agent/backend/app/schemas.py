@@ -88,7 +88,6 @@ class RoundSummary(BaseModel):
 
 
 class StartRequest(BaseModel):
-    topic: Literal["random", "technology", "culture", "science", "psychology", "lifestyle"] = "random"
     level: str = "B2-C1"
     userId: str = "default-user"
 
