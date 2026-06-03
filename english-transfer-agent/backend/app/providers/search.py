@@ -342,6 +342,7 @@ class TavilySearchProvider(SearchProvider):
     - TAVILY_MIN_CONTENT_WORDS=60
     - TAVILY_MAX_RAW_RESULTS=15
     - TAVILY_FETCH_MAIN_ARTICLE=true
+    - TAVILY_INCLUDE_RAW_CONTENT=false
     - ARTICLE_FETCH_TIMEOUT_SECONDS=12
     """
 
@@ -363,6 +364,7 @@ class TavilySearchProvider(SearchProvider):
         raw_result_count = int(os.getenv("TAVILY_MAX_RAW_RESULTS", str(max(max_results * 3, 15))))
         fetch_main_article = _env_flag("TAVILY_FETCH_MAIN_ARTICLE", True)
         article_fetch_timeout = float(os.getenv("ARTICLE_FETCH_TIMEOUT_SECONDS", "12"))
+        include_raw_content = _env_flag("TAVILY_INCLUDE_RAW_CONTENT", False)
 
         query_variants = self._build_query_variants(query)
         search_plan = self._build_search_plan(
@@ -386,6 +388,7 @@ class TavilySearchProvider(SearchProvider):
                 min_content_words=min_content_words,
                 fetch_main_article=fetch_main_article,
                 article_fetch_timeout=article_fetch_timeout,
+                include_raw_content=include_raw_content,
             )
 
             added = 0
@@ -523,6 +526,7 @@ class TavilySearchProvider(SearchProvider):
         min_content_words: int,
         fetch_main_article: bool,
         article_fetch_timeout: float,
+        include_raw_content: bool,
     ) -> tuple[list[SearchResult], list[dict[str, str]]]:
         payload: dict[str, object] = {
             "api_key": self.api_key,
@@ -530,7 +534,7 @@ class TavilySearchProvider(SearchProvider):
             "max_results": raw_result_count,
             "search_depth": search_depth,
             "include_answer": False,
-            "include_raw_content": True,
+            "include_raw_content": include_raw_content,
             "exclude_domains": exclude_domains,
         }
 
@@ -540,15 +544,26 @@ class TavilySearchProvider(SearchProvider):
         url = "https://api.tavily.com/search"
         logger.info(color_request_log("Search HTTP request -> url=%s query=%s max_results=%s include_domains=%s"), url, query, raw_result_count, include_domains)
         logger.debug(color_request_log("Search HTTP request payload=%s"), _redact_search_payload(payload))
-        response = httpx.post(
-            url,
-            json=payload,
-            timeout=20,
-        )
-        logger.info("Search HTTP response <- url=%s status=%s", url, response.status_code)
-        response.raise_for_status()
-
-        data = response.json()
+        try:
+            response = httpx.post(
+                url,
+                json=payload,
+                timeout=20,
+            )
+            logger.info("Search HTTP response <- url=%s status=%s", url, response.status_code)
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as exc:
+            logger.warning("Search HTTP request failed url=%s query=%s error=%s", url, query, exc)
+            return [], [
+                {
+                    "title": "",
+                    "url": url,
+                    "site": _site_from_url(url),
+                    "reason": "search_http_error",
+                    "error": str(exc),
+                }
+            ]
         logger.debug("Search HTTP response payload=%s", data)
         output: list[SearchResult] = []
         rejected: list[dict[str, str]] = []
