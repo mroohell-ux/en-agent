@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.db.store import get_conn
+from app.providers.search import normalize_article_url
 from app.logging_utils import color_request_log
 from app.prompts.card_generation import build_card_generation_prompt
 from app.prompts.evaluation import build_evaluation_prompt
@@ -40,8 +41,16 @@ def build_search_query(state, deps):
 
 
 def search_material_with_tavily(state, deps):
-    logger.info(color_request_log("Search provider request -> %s query=%s max_results=%s"), deps.search_provider.__class__.__name__, state["search_query"], 5)
-    results = deps.search_provider.search(state["search_query"], max_results=5)
+    max_results = 1
+    excluded_urls = _used_article_urls(state.get("user_id"))
+    logger.info(
+        color_request_log("Search provider request -> %s query=%s max_results=%s excluded_urls=%s"),
+        deps.search_provider.__class__.__name__,
+        state["search_query"],
+        max_results,
+        len(excluded_urls),
+    )
+    results = deps.search_provider.search(state["search_query"], max_results=max_results, excluded_urls=excluded_urls)
     search_results = [r.model_dump() for r in results]
     logger.debug("Search provider response payload=%s", search_results)
     dump_path = _dump_search_material(state, search_results)
@@ -105,9 +114,55 @@ def save_session_and_cards(state, deps):
             ),
         )
         saved_cards.append(card_to_save)
+    _remember_article_sources(cur, state, saved_cards)
     conn.commit()
     conn.close()
     return {"cards": saved_cards, "filtered_cards": saved_cards}
+
+
+def _used_article_urls(user_id: str | None) -> set[str]:
+    if not user_id:
+        return set()
+
+    conn = get_conn()
+    cur = conn.cursor()
+    rows = cur.execute("SELECT source_url FROM article_sources WHERE user_id=?", (user_id,)).fetchall()
+    conn.close()
+    return {row["source_url"] for row in rows if row["source_url"]}
+
+
+def _remember_article_sources(cur, state: dict, saved_cards: list[dict]) -> None:
+    urls_by_title: dict[str, str] = {}
+
+    for result in state.get("search_results", []):
+        url = result.get("url")
+        if url:
+            urls_by_title[url] = result.get("title", "")
+
+    for card in saved_cards:
+        source = card.get("source") or {}
+        url = source.get("url")
+        if url:
+            urls_by_title[url] = source.get("title") or card.get("title") or urls_by_title.get(url, "")
+
+    for url, title in urls_by_title.items():
+        normalized_url = normalize_article_url(url)
+        if not normalized_url:
+            continue
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO article_sources (user_id,session_id,topic,source_url,source_title,used_at)
+            VALUES (?,?,?,?,?,?)
+            """,
+            (
+                state.get("user_id"),
+                state.get("session_id"),
+                state.get("topic"),
+                normalized_url,
+                title,
+                datetime.utcnow().isoformat(),
+            ),
+        )
 
 
 def load_session_and_card(state, deps):

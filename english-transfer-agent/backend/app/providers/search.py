@@ -229,6 +229,14 @@ def _site_from_url(url: str) -> str:
     return host.removeprefix("www.")
 
 
+def normalize_article_url(url: str) -> str:
+    parsed = urlparse(url.strip())
+    scheme = (parsed.scheme or "https").lower()
+    host = parsed.netloc.lower().removeprefix("www.")
+    path = parsed.path.rstrip("/")
+    return f"{scheme}://{host}{path}"
+
+
 def _is_excluded_domain(url: str, excluded_domains: list[str]) -> bool:
     site = _site_from_url(url)
     return any(site == domain or site.endswith(f".{domain}") for domain in excluded_domains)
@@ -338,27 +346,29 @@ def _rejection_reason(
 
 class SearchProvider(ABC):
     @abstractmethod
-    def search(self, query: str, max_results: int) -> list[SearchResult]:
+    def search(self, query: str, max_results: int, excluded_urls: set[str] | None = None) -> list[SearchResult]:
         raise NotImplementedError
 
 
 class MockSearchProvider(SearchProvider):
-    def search(self, query: str, max_results: int) -> list[SearchResult]:
-        return [
-            SearchResult(
-                title="Ocean life and climate",
-                url="https://example.com/ocean-life",
-                content=(
-                    "Two back-to-back expeditions in the Southwest Atlantic Ocean have "
-                    "highlighted the key role played by deep-sea organisms in locking away "
-                    "carbon and buffering against climate change. Scientists say these organisms "
-                    "are part of a larger ocean system that stores carbon and helps regulate the "
-                    "planet's climate."
-                ),
-                snippet="Deep-sea organisms play a role in carbon storage.",
-                site="example.com",
-            )
-        ][:max_results]
+    def search(self, query: str, max_results: int, excluded_urls: set[str] | None = None) -> list[SearchResult]:
+        excluded_urls = excluded_urls or set()
+        result = SearchResult(
+            title="Ocean life and climate",
+            url="https://example.com/ocean-life",
+            content=(
+                "Two back-to-back expeditions in the Southwest Atlantic Ocean have "
+                "highlighted the key role played by deep-sea organisms in locking away "
+                "carbon and buffering against climate change. Scientists say these organisms "
+                "are part of a larger ocean system that stores carbon and helps regulate the "
+                "planet's climate."
+            ),
+            snippet="Deep-sea organisms play a role in carbon storage.",
+            site="example.com",
+        )
+        if normalize_article_url(result.url) in excluded_urls:
+            return []
+        return [result][:max_results]
 
 
 class TavilySearchProvider(SearchProvider):
@@ -392,7 +402,8 @@ class TavilySearchProvider(SearchProvider):
         self.api_key = os.getenv("TAVILY_API_KEY", "").strip()
         self.last_debug: dict[str, object] = {}
 
-    def search(self, query: str, max_results: int) -> list[SearchResult]:
+    def search(self, query: str, max_results: int, excluded_urls: set[str] | None = None) -> list[SearchResult]:
+        excluded_urls = excluded_urls or set()
         if not self.api_key:
             logger.info(color_request_log("Tavily API key missing; sending search to MockSearchProvider query=%s max_results=%s"), query, max_results)
             return MockSearchProvider().search(query, max_results)
@@ -437,14 +448,16 @@ class TavilySearchProvider(SearchProvider):
                 article_content_source=article_content_source,
                 tavily_extract_depth=tavily_extract_depth,
                 tavily_extract_format=tavily_extract_format,
+                excluded_urls=excluded_urls,
             )
 
             added = 0
             for result in results:
-                if result.url in seen_urls:
+                normalized_url = normalize_article_url(result.url)
+                if normalized_url in seen_urls or normalized_url in excluded_urls:
                     continue
                 collected.append(result)
-                seen_urls.add(result.url)
+                seen_urls.add(normalized_url)
                 added += 1
 
                 if len(collected) >= max_results:
@@ -578,6 +591,7 @@ class TavilySearchProvider(SearchProvider):
         article_content_source: str,
         tavily_extract_depth: str,
         tavily_extract_format: str,
+        excluded_urls: set[str],
     ) -> tuple[list[SearchResult], list[dict[str, str]]]:
         payload: dict[str, object] = {
             "api_key": self.api_key,
@@ -623,6 +637,19 @@ class TavilySearchProvider(SearchProvider):
             title = item.get("title", "") or ""
             url = item.get("url", "") or ""
             site = _site_from_url(url) if url else ""
+            normalized_url = normalize_article_url(url) if url else ""
+
+            if normalized_url in excluded_urls:
+                rejected.append(
+                    {
+                        "title": title,
+                        "url": url,
+                        "site": site,
+                        "reason": "already_used",
+                        "content_source": "not_fetched",
+                    }
+                )
+                continue
 
             early_reason = _early_rejection_reason(title, url, exclude_domains)
             if early_reason:
