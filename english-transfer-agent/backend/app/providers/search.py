@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.logging_utils import color_request_log
 from app.schemas import SearchResult
 
 
@@ -260,7 +261,7 @@ class TavilySearchProvider(SearchProvider):
 
     def search(self, query: str, max_results: int) -> list[SearchResult]:
         if not self.api_key:
-            logger.info("Tavily API key missing; sending search to MockSearchProvider query=%s max_results=%s", query, max_results)
+            logger.info(color_request_log("Tavily API key missing; sending search to MockSearchProvider query=%s max_results=%s"), query, max_results)
             return MockSearchProvider().search(query, max_results)
 
         excluded_domains = _domains_from_env("TAVILY_EXCLUDE_DOMAINS", DEFAULT_EXCLUDED_DOMAINS)
@@ -441,8 +442,8 @@ class TavilySearchProvider(SearchProvider):
             payload["include_domains"] = include_domains
 
         url = "https://api.tavily.com/search"
-        logger.info("Search HTTP request -> url=%s query=%s max_results=%s include_domains=%s", url, query, raw_result_count, include_domains)
-        logger.debug("Search HTTP request payload=%s", _redact_search_payload(payload))
+        logger.info(color_request_log("Search HTTP request -> url=%s query=%s max_results=%s include_domains=%s"), url, query, raw_result_count, include_domains)
+        logger.debug(color_request_log("Search HTTP request payload=%s"), _redact_search_payload(payload))
         response = httpx.post(
             url,
             json=payload,

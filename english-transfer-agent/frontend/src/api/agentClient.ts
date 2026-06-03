@@ -67,6 +67,9 @@ export type RoundSummary = {
 };
 
 const API_BASE = (import.meta as ImportMeta & { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? 'http://localhost:8000';
+const REQUEST_LOG_STYLE = 'color: #dc2626; font-weight: 900;';
+const RESPONSE_LOG_STYLE = 'color: #16a34a; font-weight: 800;';
+const ERROR_LOG_STYLE = 'color: #b91c1c; font-weight: 900;';
 
 export type ApiErrorDetail = {
   step?: string;
@@ -117,7 +120,7 @@ async function postJson<TResponse, TBody extends Record<string, unknown>>(path: 
   const url = `${API_BASE}${path}`;
   const requestPayload = JSON.stringify(body);
 
-  console.debug('[agent-api] sending request', {
+  console.debug('%c[agent-api] REQUEST sending', REQUEST_LOG_STYLE, {
     method: 'POST',
     path,
     url,
@@ -134,7 +137,7 @@ async function postJson<TResponse, TBody extends Record<string, unknown>>(path: 
 
   if (!res.ok) {
     const detail = await readErrorDetail(res);
-    console.error('[agent-api] request failed', {
+    console.error('%c[agent-api] REQUEST failed', ERROR_LOG_STYLE, {
       method: 'POST',
       path,
       url,
@@ -147,7 +150,7 @@ async function postJson<TResponse, TBody extends Record<string, unknown>>(path: 
   }
 
   const responsePayload = (await res.json()) as TResponse;
-  console.debug('[agent-api] received response', {
+  console.debug('%c[agent-api] RESPONSE received', RESPONSE_LOG_STYLE, {
     method: 'POST',
     path,
     url,

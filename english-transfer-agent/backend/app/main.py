@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.store import init_db
+from app.logging_utils import color_request_log
 from app.providers.ai import build_ai_provider
 from app.providers.search import build_search_provider
 from app.schemas import AnswerRequest, FinishRequest, StartRequest
@@ -27,8 +28,8 @@ def _request_payload(req: Any) -> dict[str, Any]:
 
 def _log_api_request(path: str, req: Any) -> None:
     payload = _request_payload(req)
-    logger.info("POST %s -> AgentService payload=%s", path, payload)
-    logger.debug("POST %s request payload detail=%s", path, payload)
+    logger.info(color_request_log("POST %s -> AgentService payload=%s"), path, payload)
+    logger.debug(color_request_log("POST %s request payload detail=%s"), path, payload)
 
 
 def _get_cors_origins() -> list[str]:

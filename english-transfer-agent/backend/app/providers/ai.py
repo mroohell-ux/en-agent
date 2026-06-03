@@ -10,6 +10,7 @@ from typing import Any, Callable, TypeVar
 import httpx
 from pydantic import BaseModel
 
+from app.logging_utils import color_request_log
 from app.schemas import (
     AnswerEvaluation,
     CardSource,
@@ -242,14 +243,14 @@ class OpenAiCompatibleProvider(AiProvider):
             "Content-Type": "application/json",
         }
         logger.info(
-            "AI HTTP request -> url=%s provider=%s model=%s schema=%s",
+            color_request_log("AI HTTP request -> url=%s provider=%s model=%s schema=%s"),
             url,
             self.__class__.__name__,
             self.model,
             schema_name,
         )
         logger.debug(
-            "AI HTTP request payload=%s headers=%s",
+            color_request_log("AI HTTP request payload=%s headers=%s"),
             _redact_sensitive_payload(payload),
             _redact_sensitive_payload(headers),
         )
