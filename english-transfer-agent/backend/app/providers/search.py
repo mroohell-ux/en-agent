@@ -24,6 +24,7 @@ def _redact_search_payload(payload: dict[str, object]) -> dict[str, object]:
 
 
 PRESET_ARTICLE_DOMAINS = [
+    # General essays, science, technology, culture, and longform features.
     "theconversation.com",
     "aeon.co",
     "nautil.us",
@@ -39,6 +40,46 @@ PRESET_ARTICLE_DOMAINS = [
     "nationalgeographic.com",
     "technologyreview.com",
     "bigthink.com",
+    "atlasobscura.com",
+    "longreads.com",
+    "narratively.com",
+    "lithub.com",
+    "parisreview.org",
+    "granta.com",
+
+    # News and current affairs with strong feature writing.
+    "apnews.com",
+    "reuters.com",
+    "theguardian.com",
+    "time.com",
+    "vox.com",
+    "slate.com",
+    "propublica.org",
+    "restofworld.org",
+
+    # Sports features and profiles.
+    "espn.com",
+    "si.com",
+    "sports.yahoo.com",
+    "olympics.com",
+    "theplayerstribune.com",
+
+    # Arts, design, film, music, and books.
+    "artnews.com",
+    "artsy.net",
+    "hyperallergic.com",
+    "vulture.com",
+    "pitchfork.com",
+    "rollingstone.com",
+    "vanityfair.com",
+
+    # Food, cooking, restaurants, and everyday culture.
+    "seriouseats.com",
+    "bonappetit.com",
+    "foodandwine.com",
+    "eater.com",
+    "saveur.com",
+    "tastecooking.com",
 ]
 
 DEFAULT_EXCLUDED_DOMAINS = [
