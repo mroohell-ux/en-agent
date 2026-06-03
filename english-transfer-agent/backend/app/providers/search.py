@@ -186,6 +186,37 @@ def _fetch_main_article_body(url: str, timeout: float) -> str:
     return _extract_main_article_body(response.text)
 
 
+def _extract_article_body_with_tavily(
+    *,
+    api_key: str,
+    page_url: str,
+    timeout: float,
+    extract_depth: str,
+    output_format: str,
+) -> str:
+    response = httpx.post(
+        "https://api.tavily.com/extract",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "urls": page_url,
+            "extract_depth": extract_depth,
+            "format": output_format,
+            "include_images": False,
+            "timeout": timeout,
+        },
+        timeout=timeout + 5,
+    )
+    response.raise_for_status()
+
+    data = response.json()
+    results = data.get("results") or []
+    if not results:
+        return ""
+
+    raw_content = results[0].get("raw_content") or ""
+    return _clean_article_text(str(raw_content))
+
+
 def _domains_from_env(name: str, fallback: list[str]) -> list[str]:
     configured = os.getenv(name, "").strip()
     if not configured:
@@ -266,13 +297,7 @@ def _word_count(text: str) -> int:
     return len(re.findall(r"\b\w+\b", text or ""))
 
 
-def _rejection_reason(
-    title: str,
-    url: str,
-    content: str,
-    excluded_domains: list[str],
-    min_content_words: int,
-) -> str | None:
+def _early_rejection_reason(title: str, url: str, excluded_domains: list[str]) -> str | None:
     if not url:
         return "missing_url"
 
@@ -287,6 +312,20 @@ def _rejection_reason(
 
     if _contains_bad_keyword(title, url):
         return "bad_keyword"
+
+    return None
+
+
+def _rejection_reason(
+    title: str,
+    url: str,
+    content: str,
+    excluded_domains: list[str],
+    min_content_words: int,
+) -> str | None:
+    early_reason = _early_rejection_reason(title, url, excluded_domains)
+    if early_reason:
+        return early_reason
 
     if _looks_like_index_page(title, content):
         return "index_page"
@@ -342,6 +381,9 @@ class TavilySearchProvider(SearchProvider):
     - TAVILY_MIN_CONTENT_WORDS=60
     - TAVILY_MAX_RAW_RESULTS=15
     - TAVILY_FETCH_MAIN_ARTICLE=true
+    - ARTICLE_CONTENT_SOURCE=tavily_extract|direct|search_content
+    - TAVILY_EXTRACT_DEPTH=basic|advanced
+    - TAVILY_EXTRACT_FORMAT=text|markdown
     - TAVILY_INCLUDE_RAW_CONTENT=false
     - ARTICLE_FETCH_TIMEOUT_SECONDS=12
     """
@@ -365,6 +407,9 @@ class TavilySearchProvider(SearchProvider):
         fetch_main_article = _env_flag("TAVILY_FETCH_MAIN_ARTICLE", True)
         article_fetch_timeout = float(os.getenv("ARTICLE_FETCH_TIMEOUT_SECONDS", "12"))
         include_raw_content = _env_flag("TAVILY_INCLUDE_RAW_CONTENT", False)
+        article_content_source = os.getenv("ARTICLE_CONTENT_SOURCE", "tavily_extract").strip().lower()
+        tavily_extract_depth = os.getenv("TAVILY_EXTRACT_DEPTH", "basic").strip().lower()
+        tavily_extract_format = os.getenv("TAVILY_EXTRACT_FORMAT", "text").strip().lower()
 
         query_variants = self._build_query_variants(query)
         search_plan = self._build_search_plan(
@@ -389,6 +434,9 @@ class TavilySearchProvider(SearchProvider):
                 fetch_main_article=fetch_main_article,
                 article_fetch_timeout=article_fetch_timeout,
                 include_raw_content=include_raw_content,
+                article_content_source=article_content_source,
+                tavily_extract_depth=tavily_extract_depth,
+                tavily_extract_format=tavily_extract_format,
             )
 
             added = 0
@@ -527,6 +575,9 @@ class TavilySearchProvider(SearchProvider):
         fetch_main_article: bool,
         article_fetch_timeout: float,
         include_raw_content: bool,
+        article_content_source: str,
+        tavily_extract_depth: str,
+        tavily_extract_format: str,
     ) -> tuple[list[SearchResult], list[dict[str, str]]]:
         payload: dict[str, object] = {
             "api_key": self.api_key,
@@ -571,20 +622,45 @@ class TavilySearchProvider(SearchProvider):
         for item in data.get("results", []):
             title = item.get("title", "") or ""
             url = item.get("url", "") or ""
-            tavily_content = item.get("raw_content") or item.get("content", "") or ""
             site = _site_from_url(url) if url else ""
+
+            early_reason = _early_rejection_reason(title, url, exclude_domains)
+            if early_reason:
+                rejected.append(
+                    {
+                        "title": title,
+                        "url": url,
+                        "site": site,
+                        "reason": early_reason,
+                        "content_source": "not_fetched",
+                    }
+                )
+                continue
+
+            tavily_content = item.get("raw_content") or item.get("content", "") or ""
             content_source = "tavily_raw_content" if item.get("raw_content") else "tavily_content"
             content = _clean_article_text(str(tavily_content))
 
-            if fetch_main_article and url:
+            if fetch_main_article and url and article_content_source != "search_content":
                 try:
-                    fetched_content = _fetch_main_article_body(url, article_fetch_timeout)
+                    if article_content_source == "direct":
+                        fetched_content = _fetch_main_article_body(url, article_fetch_timeout)
+                        fetched_source = "direct_fetch_main_article_body"
+                    else:
+                        fetched_content = _extract_article_body_with_tavily(
+                            api_key=self.api_key,
+                            page_url=url,
+                            timeout=article_fetch_timeout,
+                            extract_depth=tavily_extract_depth,
+                            output_format=tavily_extract_format,
+                        )
+                        fetched_source = "tavily_extract_main_article_body"
                 except (httpx.HTTPError, ValueError) as exc:
-                    logger.debug("Could not fetch main article body url=%s error=%s", url, exc)
+                    logger.debug("Could not extract main article body source=%s url=%s error=%s", article_content_source, url, exc)
                 else:
                     if _word_count(fetched_content) >= min_content_words:
                         content = fetched_content
-                        content_source = "fetched_main_article_body"
+                        content_source = fetched_source
 
             reason = _rejection_reason(
                 title=title,
