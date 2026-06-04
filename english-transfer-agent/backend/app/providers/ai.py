@@ -11,13 +11,22 @@ from pydantic import BaseModel
 
 from app.schemas import (
     AnswerEvaluation,
+    ArticleLesson,
+    ArticleSource,
     CardSource,
     LearningCard,
     LearningCardSet,
+    LessonSummary,
+    LessonProgress,
     Mistake,
     MistakeToRemember,
     PracticedItem,
+    RetellTask,
     RoundSummary,
+    TeacherCorrection,
+    TeacherQuestion,
+    UsefulLanguageItem,
+    IeltsTasks,
 )
 
 
@@ -32,6 +41,18 @@ class AiProvider(ABC):
 
     @abstractmethod
     def summarize_round(self, prompt: str) -> RoundSummary:
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_article_lesson(self, prompt: str) -> ArticleLesson:
+        raise NotImplementedError
+
+    @abstractmethod
+    def evaluate_speaking_answer(self, prompt: str) -> TeacherCorrection:
+        raise NotImplementedError
+
+    @abstractmethod
+    def summarize_article_lesson(self, prompt: str) -> LessonSummary:
         raise NotImplementedError
 
 
@@ -156,6 +177,91 @@ class MockAiProvider(AiProvider):
         )
 
 
+    def generate_article_lesson(self, prompt: str) -> ArticleLesson:
+        include_ielts = "IncludeIelts: true" in prompt
+        raw_text = prompt.split("ArticleText:", 1)[1].strip() if "ArticleText:" in prompt else ""
+        raw_lower = raw_text.lower()
+        is_vance = "cat ladies" in raw_lower or "jd vance" in raw_lower or "childless" in raw_lower
+        title = "JD Vance's 'childless cat ladies' comment sparks backlash" if is_vance else "Article-based speaking lesson"
+        source = ArticleSource(
+            title=title,
+            url=_extract_prompt_value(prompt, "ArticleUrl") or None,
+            site="Pasted article" if not _extract_prompt_value(prompt, "ArticleUrl") else "Article URL",
+            rawText=raw_text or "A public comment did not land well and sparked a wider debate about stereotypes, family choices, and political language.",
+            publishedAt=None,
+        )
+        questions = [
+            TeacherQuestion(id="q-comprehension", type="comprehension", question="What phrase or comment caused public anger?", expectedIdeas=["Identify the controversial phrase", "Explain who reacted to it"], usefulExpressionHint="unleash fury"),
+            TeacherQuestion(id="q-explanation", type="explanation", question="Why did many people see the phrase as sexist or unfair?", expectedIdeas=["It reduced women to family status", "It suggested childless people have less stake in society"], usefulExpressionHint="take issue with"),
+            TeacherQuestion(id="q-opinion", type="opinion", question="Do you think politicians should comment on people’s family choices? Why or why not?", expectedIdeas=["Give a clear opinion", "Support it with one reason"], usefulExpressionHint="did not land well"),
+            TeacherQuestion(id="q-personal", type="personal_connection", question="Are there similar stereotypes about marriage, children, or gender roles in your culture?", expectedIdeas=["Connect the article to your own context", "Give a concrete example"], usefulExpressionHint="a direct stake in"),
+            TeacherQuestion(id="q-advanced", type="advanced_discussion", question="Why do old stereotypes survive even when society changes?", expectedIdeas=["Discuss habit, media, politics, or social pressure", "Use an abstract explanation"], usefulExpressionHint="harmful historical roots"),
+        ]
+        useful_language = [
+            UsefulLanguageItem(id="ul-unleash-fury", category="expression", text="unleash fury", meaning="cause a strong angry public reaction", fromArticle="the comment unleashed fury", whyUseful="It helps you describe backlash in news or social discussions.", example="The decision unleashed fury among users.", reusePrompt="Use 'unleash fury' to describe a comment, policy, joke, or product update."),
+            UsefulLanguageItem(id="ul-did-not-land-well", category="expression", text="did not land well", meaning="was received badly", fromArticle="his comments did not land well", whyUseful="It sounds natural when judging how people reacted to a message.", example="The joke did not land well in the meeting.", reusePrompt="Use 'did not land well' to describe a joke, comment, decision, or product update."),
+            UsefulLanguageItem(id="ul-take-issue-with", category="expression", text="take issue with", meaning="disagree strongly with something", fromArticle="critics took issue with the phrase", whyUseful="It is a precise speaking phrase for disagreement.", example="Many parents took issue with the school’s decision.", reusePrompt="Use 'take issue with' to explain what people objected to."),
+            UsefulLanguageItem(id="ul-direct-stake", category="expression", text="have a direct stake in", meaning="be personally affected by or invested in something", fromArticle="people with children have a more direct stake", whyUseful="It helps you discuss responsibility, politics, and incentives.", example="Young people have a direct stake in climate policy.", reusePrompt="Use 'have a direct stake in' to talk about a social issue."),
+            UsefulLanguageItem(id="ul-backlash", category="vocabulary", text="backlash", meaning="a strong negative reaction", fromArticle="the backlash grew online", whyUseful="It is common in news, politics, and workplace discussions.", example="The company faced backlash after changing its privacy policy.", reusePrompt="Use 'backlash' to describe a public reaction."),
+            UsefulLanguageItem(id="ul-saw-it-as", category="sentence_pattern", text="see it as + adjective/noun", meaning="interpret something in a particular way", fromArticle="many saw it as sexist", whyUseful="It helps you report other people’s reactions without overclaiming.", example="Some users saw it as a step backward.", reusePrompt="Use 'saw it as' to explain how a group interpreted something."),
+        ]
+        ielts = None
+        if include_ielts:
+            ielts = IeltsTasks(
+                listening={"transcript": "A short news report summarizes the controversy and the public response.", "questions": ["What comment caused backlash?", "Who criticized it?"]},
+                reading={"questions": ["What is the main idea?", "True/False/Not Given: Everyone agreed with the comment."], "vocabularyInContext": ["backlash", "stake"]},
+                writing={"task2": "Public figures should avoid commenting on private family choices. To what extent do you agree?"},
+                speaking={"part1": ["Do people in your culture talk a lot about family choices?"], "part2": "Describe a public comment that caused debate.", "part3": ["Why can stereotypes be politically powerful?"]},
+            )
+        return ArticleLesson(
+            id="lesson-mock",
+            userId=_extract_prompt_value(prompt, "UserId") or "default-user",
+            source=source,
+            level=_extract_prompt_value(prompt, "Level") or "B2-C1",
+            mainIdea="The article explains how a political comment about childless women triggered backlash because many people saw it as sexist and dismissive of people without children.",
+            keyPoints=["A phrase about 'childless cat ladies' caused anger.", "Critics argued that it relied on old gender stereotypes.", "The debate became about family choices, political power, and who has a stake in society."],
+            retellTask=RetellTask(prompt="What is the main idea of this article? Say it in your own words in 40–60 seconds.", targetSpeakingSeconds=50, hints=["Start with: The article is mainly about...", "Mention the comment, the backlash, and why people objected."], expectedContentPoints=["Identify the controversial comment", "Explain the backlash", "Mention stereotypes or family choices"]),
+            questions=questions,
+            usefulLanguage=useful_language,
+            ieltsTasks=ielts,
+            progress=LessonProgress(),
+        )
+
+    def evaluate_speaking_answer(self, prompt: str) -> TeacherCorrection:
+        transcript = prompt.split("Transcript:", 1)[1].strip() if "Transcript:" in prompt else prompt
+        lower = transcript.lower()
+        mistakes = []
+        if "people angry about" in lower:
+            mistakes.append(Mistake(type="expression", original="people angry about", correction="backlash against", explanation="'Backlash against' is more natural for public criticism.", explanationChinese="讨论公众批评时，backlash against 更自然。", reviewItem="people angry about → backlash against"))
+        if "bad history" in lower:
+            mistakes.append(Mistake(type="expression", original="bad history", correction="a darker history / harmful historical roots", explanation="This sounds more natural when discussing social or historical context.", explanationChinese="讨论社会或历史语境时，这样更自然。", reviewItem="bad history → harmful historical roots"))
+        if "it is sexist" in lower:
+            mistakes.append(Mistake(type="naturalness", original="it is sexist", correction="they saw it as sexist", explanation="Use reporting language when describing other people's reaction.", explanationChinese="描述他人反应时，用 saw it as 更准确。", reviewItem="it is sexist → they saw it as sexist"))
+        if not mistakes:
+            mistakes.append(Mistake(type="structure", original="unclear focus", correction="Start with the main point, then give one reason.", explanation="Speaking answers sound stronger when the logic is easy to follow.", explanationChinese="口语答案先说主旨，再给理由，会更清楚。", reviewItem="main point → one reason"))
+        natural = "The article is mainly about the backlash against JD Vance’s 'childless cat ladies' comment. Many people took issue with it because they saw it as sexist and dismissive of people who do not have children."
+        return TeacherCorrection(
+            score=82 if len(mistakes) <= 1 else 74,
+            overallFeedback="Good start. Your answer connects to the article, but make it more natural and more clearly structured for speaking.",
+            correctedAnswer=natural,
+            naturalVersion=natural,
+            advancedVersion="The article shows how one political phrase can unleash fury when it taps into older stereotypes about gender, family choices, and who is seen as having a direct stake in society.",
+            mistakes=mistakes[:3],
+            keyImprovements=["Use 'backlash against...' instead of 'people angry about...'.", "Use 'they saw it as sexist' instead of directly saying 'it is sexist'.", "State the main idea first, then add one clear reason."],
+            repeatPrompt=f"Now repeat this improved version aloud: {natural}",
+            nextAction="repeat_better_version",
+        )
+
+    def summarize_article_lesson(self, prompt: str) -> LessonSummary:
+        return LessonSummary(
+            lessonId=_extract_prompt_value(prompt, "LessonId") or "lesson-mock",
+            whatUserDidWell=["You answered from the article instead of giving a generic opinion.", "You practiced turning passive understanding into spoken output."],
+            repeatedMistakes=[Mistake(type="expression", original="people angry about", correction="backlash against", explanation="Use this for public criticism.", explanationChinese="公众批评更常用 backlash against。", reviewItem="backlash against")],
+            usefulExpressionsLearned=[UsefulLanguageItem(id="ul-did-not-land-well", category="expression", text="did not land well", meaning="was received badly", fromArticle="his comments did not land well", whyUseful="Useful for reactions.", example="The joke did not land well.", reusePrompt="Use it to describe a public reaction.")],
+            suggestedNextPractice=["Repeat your natural version once more.", "Answer one advanced discussion question using 'have a direct stake in'.", "Review: backlash against; did not land well; take issue with."],
+        )
+
+
 SchemaModel = TypeVar("SchemaModel", bound=BaseModel)
 
 
@@ -189,6 +295,15 @@ class OpenAiCompatibleProvider(AiProvider):
 
     def summarize_round(self, prompt: str) -> RoundSummary:
         return self._chat_structured(prompt, RoundSummary, "RoundSummary")
+
+    def generate_article_lesson(self, prompt: str) -> ArticleLesson:
+        return self._chat_structured(prompt, ArticleLesson, "ArticleLesson")
+
+    def evaluate_speaking_answer(self, prompt: str) -> TeacherCorrection:
+        return self._chat_structured(prompt, TeacherCorrection, "TeacherCorrection")
+
+    def summarize_article_lesson(self, prompt: str) -> LessonSummary:
+        return self._chat_structured(prompt, LessonSummary, "LessonSummary")
 
     def _chat_structured(self, prompt: str, schema_model: type[SchemaModel], schema_name: str) -> SchemaModel:
         if not self.api_key:
@@ -563,7 +678,7 @@ def _normalize_mistakes(value: Any) -> list[dict[str, str]]:
 
 def _normalize_mistake_type(value: Any) -> str:
     normalized = str(value or "").strip().lower()
-    if normalized in {"pattern", "grammar", "naturalness", "word_choice", "structure"}:
+    if normalized in {"pattern", "grammar", "naturalness", "word_choice", "structure", "vocabulary", "expression", "logic"}:
         return normalized
     return _infer_mistake_type(normalized)
 
@@ -573,7 +688,7 @@ def _infer_mistake_type(text: str) -> str:
     if "grammar" in lowered or "preposition" in lowered or "tense" in lowered or "plural" in lowered:
         return "grammar"
     if "word" in lowered or "vocabulary" in lowered or "choice" in lowered:
-        return "word_choice"
+        return "vocabulary"
     if "natural" in lowered or "awkward" in lowered:
         return "naturalness"
     if "structure" in lowered or "sentence" in lowered or "subject" in lowered:
@@ -615,3 +730,11 @@ def build_ai_provider(name: str) -> AiProvider:
     if normalized in {"alibaba", "dashscope", "qwen"}:
         return AlibabaProvider()
     return MockAiProvider()
+
+
+def _extract_prompt_value(prompt: str, key: str) -> str:
+    prefix = f"{key}:"
+    for line in prompt.splitlines():
+        if line.startswith(prefix):
+            return line.split(":", 1)[1].strip()
+    return ""
