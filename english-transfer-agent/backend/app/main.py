@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.store import init_db
 from app.providers.ai import build_ai_provider
 from app.providers.search import build_search_provider
-from app.schemas import AnswerRequest, FinishRequest, StartRequest
+from app.schemas import ArticleLessonRequest, AnswerRequest, FinishRequest, SpeakingAnswerRequest, SpeakingTranscriptRequest, StartRequest
 from app.services.agent_service import AgentService
 
 load_dotenv()
@@ -65,3 +65,64 @@ def answer_agent(req: AnswerRequest):
 def finish_agent(req: FinishRequest):
     logger.info("POST /agent/finish session=%s", req.sessionId)
     return agent_service.finish(req)
+
+
+
+@app.get("/lessons")
+def list_lessons(userId: str = "default-user"):
+    logger.info("GET /lessons user=%s", userId)
+    return agent_service.list_article_lessons(userId)
+
+
+@app.post("/lessons/from-article")
+def create_lesson_from_article(req: ArticleLessonRequest):
+    logger.info("POST /lessons/from-article level=%s user=%s includeIelts=%s", req.level, req.userId, req.includeIelts)
+    return agent_service.create_article_lesson(req)
+
+
+@app.post("/lessons/{lesson_id}/retell")
+def answer_retell(lesson_id: str, req: SpeakingTranscriptRequest):
+    logger.info("POST /lessons/%s/retell attempt=%s", lesson_id, req.attemptNumber)
+    return agent_service.evaluate_speaking(
+        SpeakingAnswerRequest(
+            lessonId=lesson_id,
+            taskType="retell",
+            taskId="retell-main-idea",
+            transcript=req.transcript,
+            attemptNumber=req.attemptNumber,
+        )
+    )
+
+
+@app.post("/lessons/{lesson_id}/questions/{question_id}/answer")
+def answer_lesson_question(lesson_id: str, question_id: str, req: SpeakingTranscriptRequest):
+    logger.info("POST /lessons/%s/questions/%s/answer attempt=%s", lesson_id, question_id, req.attemptNumber)
+    return agent_service.evaluate_speaking(
+        SpeakingAnswerRequest(
+            lessonId=lesson_id,
+            taskType="question",
+            taskId=question_id,
+            transcript=req.transcript,
+            attemptNumber=req.attemptNumber,
+        )
+    )
+
+
+@app.post("/lessons/{lesson_id}/useful-language/{item_id}/practice")
+def practice_useful_language(lesson_id: str, item_id: str, req: SpeakingTranscriptRequest):
+    logger.info("POST /lessons/%s/useful-language/%s/practice attempt=%s", lesson_id, item_id, req.attemptNumber)
+    return agent_service.evaluate_speaking(
+        SpeakingAnswerRequest(
+            lessonId=lesson_id,
+            taskType="useful_language",
+            taskId=item_id,
+            transcript=req.transcript,
+            attemptNumber=req.attemptNumber,
+        )
+    )
+
+
+@app.post("/lessons/{lesson_id}/finish")
+def finish_lesson(lesson_id: str):
+    logger.info("POST /lessons/%s/finish", lesson_id)
+    return agent_service.finish_lesson(lesson_id)

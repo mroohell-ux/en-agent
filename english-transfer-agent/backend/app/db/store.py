@@ -51,6 +51,82 @@ def init_db() -> None:
             summary_json TEXT,
             created_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS article_sources (
+            id TEXT PRIMARY KEY,
+            lesson_id TEXT,
+            title TEXT,
+            url TEXT,
+            site TEXT,
+            raw_text TEXT,
+            published_at TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS article_lessons (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            level TEXT,
+            source_id TEXT,
+            main_idea TEXT,
+            key_points_json TEXT,
+            retell_task_json TEXT,
+            ielts_tasks_json TEXT,
+            progress_json TEXT,
+            lesson_json TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS teacher_questions (
+            id TEXT PRIMARY KEY,
+            lesson_id TEXT,
+            type TEXT,
+            question TEXT,
+            question_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS useful_language_items (
+            id TEXT PRIMARY KEY,
+            lesson_id TEXT,
+            category TEXT,
+            text TEXT,
+            item_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS speaking_answers (
+            id TEXT PRIMARY KEY,
+            lesson_id TEXT,
+            task_type TEXT,
+            task_id TEXT,
+            attempt_number INTEGER,
+            transcript TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS teacher_corrections (
+            id TEXT PRIMARY KEY,
+            answer_id TEXT,
+            lesson_id TEXT,
+            task_type TEXT,
+            task_id TEXT,
+            score INTEGER,
+            correction_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS lesson_mistakes (
+            id TEXT PRIMARY KEY,
+            lesson_id TEXT,
+            answer_id TEXT,
+            type TEXT,
+            original TEXT,
+            correction TEXT,
+            mistake_json TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS lesson_summaries (
+            id TEXT PRIMARY KEY,
+            lesson_id TEXT,
+            summary_json TEXT,
+            created_at TEXT
+        );
         """
     )
     _ensure_column(cur, "sessions", "topic", "TEXT")

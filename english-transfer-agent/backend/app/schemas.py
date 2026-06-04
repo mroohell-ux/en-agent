@@ -39,11 +39,24 @@ class SearchResult(BaseModel):
     site: str
 
 
+MistakeType = Literal[
+    "pattern",
+    "grammar",
+    "naturalness",
+    "word_choice",
+    "structure",
+    "vocabulary",
+    "expression",
+    "logic",
+]
+
+
 class Mistake(BaseModel):
-    type: Literal["pattern", "grammar", "naturalness", "word_choice", "structure"]
+    type: MistakeType
     original: str
     correction: str
-    explanationChinese: str
+    explanation: str = ""
+    explanationChinese: str = ""
     reviewItem: str
 
 
@@ -107,3 +120,127 @@ class AnswerRequest(BaseModel):
 
 class FinishRequest(BaseModel):
     sessionId: str
+
+
+QuestionType = Literal[
+    "comprehension",
+    "explanation",
+    "opinion",
+    "personal_connection",
+    "advanced_discussion",
+]
+UsefulLanguageCategory = Literal["expression", "vocabulary", "grammar", "sentence_pattern"]
+SpeakingTaskType = Literal["retell", "question", "useful_language", "ielts_speaking"]
+LessonMode = Literal["speaking_first"]
+CorrectionNextAction = Literal[
+    "repeat_better_version",
+    "answer_next_question",
+    "reuse_expression_again",
+    "review_mistakes",
+    "finish_lesson",
+]
+
+
+class ArticleSource(BaseModel):
+    title: str
+    url: Optional[str] = None
+    site: Optional[str] = None
+    rawText: str
+    publishedAt: Optional[str] = None
+
+
+class RetellTask(BaseModel):
+    prompt: str
+    targetSpeakingSeconds: int = 45
+    hints: list[str] = Field(default_factory=list)
+    expectedContentPoints: list[str] = Field(default_factory=list)
+
+
+class TeacherQuestion(BaseModel):
+    id: str
+    type: QuestionType
+    question: str
+    expectedIdeas: list[str] = Field(default_factory=list)
+    usefulExpressionHint: Optional[str] = None
+
+
+class UsefulLanguageItem(BaseModel):
+    id: str
+    category: UsefulLanguageCategory
+    text: str
+    meaning: str
+    fromArticle: str
+    whyUseful: str
+    example: str
+    reusePrompt: str
+
+
+class IeltsTasks(BaseModel):
+    listening: Optional[dict] = None
+    reading: Optional[dict] = None
+    writing: Optional[dict] = None
+    speaking: Optional[dict] = None
+
+
+class LessonProgress(BaseModel):
+    stage: Literal["created", "retell", "questions", "useful_language", "review", "finished"] = "created"
+    completedTaskIds: list[str] = Field(default_factory=list)
+    answerCount: int = 0
+    mistakeCount: int = 0
+    learnedUsefulLanguageIds: list[str] = Field(default_factory=list)
+
+
+class ArticleLesson(BaseModel):
+    id: str
+    userId: str
+    source: ArticleSource
+    level: str
+    mainIdea: str
+    keyPoints: list[str]
+    retellTask: RetellTask
+    questions: list[TeacherQuestion]
+    usefulLanguage: list[UsefulLanguageItem]
+    ieltsTasks: Optional[IeltsTasks] = None
+    progress: LessonProgress = Field(default_factory=LessonProgress)
+
+
+class ArticleLessonRequest(BaseModel):
+    userId: str = "default-user"
+    level: str = "B2-C1"
+    articleUrl: Optional[str] = None
+    articleText: Optional[str] = None
+    mode: LessonMode = "speaking_first"
+    includeIelts: bool = False
+
+
+class SpeakingAnswerRequest(BaseModel):
+    lessonId: str
+    taskType: SpeakingTaskType
+    taskId: str
+    transcript: str
+    attemptNumber: int = 1
+
+
+class SpeakingTranscriptRequest(BaseModel):
+    transcript: str
+    attemptNumber: int = 1
+
+
+class TeacherCorrection(BaseModel):
+    score: int
+    overallFeedback: str
+    correctedAnswer: str
+    naturalVersion: str
+    advancedVersion: str
+    mistakes: list[Mistake] = Field(default_factory=list)
+    keyImprovements: list[str] = Field(default_factory=list)
+    repeatPrompt: str
+    nextAction: CorrectionNextAction
+
+
+class LessonSummary(BaseModel):
+    lessonId: str
+    whatUserDidWell: list[str]
+    repeatedMistakes: list[Mistake] = Field(default_factory=list)
+    usefulExpressionsLearned: list[UsefulLanguageItem] = Field(default_factory=list)
+    suggestedNextPractice: list[str] = Field(default_factory=list)
