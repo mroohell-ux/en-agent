@@ -51,6 +51,16 @@ def init_db() -> None:
             summary_json TEXT,
             created_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS article_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            session_id TEXT,
+            topic TEXT,
+            source_url TEXT,
+            source_title TEXT,
+            used_at TEXT,
+            UNIQUE(user_id, source_url)
+        );
         """
     )
     _ensure_column(cur, "sessions", "topic", "TEXT")
@@ -58,6 +68,7 @@ def init_db() -> None:
     _ensure_column(cur, "cards", "created_at", "TEXT")
     _ensure_column(cur, "answers", "attempt_number", "INTEGER")
     _ensure_column(cur, "answers", "evaluation_json", "TEXT")
+    _ensure_column(cur, "article_sources", "source_title", "TEXT")
     conn.commit()
     conn.close()
     logger.info("SQLite schema ready at %s", DB_PATH)

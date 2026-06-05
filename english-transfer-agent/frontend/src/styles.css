@@ -24,11 +24,9 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
 h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 4.5rem); letter-spacing: -0.07em; line-height: 0.95; }
 .hero-copy p:last-child { color: #716456; font-size: 1.04rem; line-height: 1.6; max-width: 660px; }
 .start-panel { display: flex; flex-direction: column; gap: 12px; background: #fffaf2; border-radius: 28px; padding: 16px; box-shadow: 0 16px 44px rgba(50, 35, 18, 0.12); }
-.topic-label { color: #4a3929; font-weight: 900; font-size: 0.9rem; }
-.topic-input { width: 100%; border: 1px solid #eadfce; background: white; border-radius: 18px; padding: 15px 16px; outline: none; color: #2a2118; }
-.topic-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, #7c3aed 50%), linear-gradient(135deg, #7c3aed 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; padding-right: 42px; }
-.topic-help { margin: -4px 2px 2px; color: #7d6e61; font-size: 0.88rem; line-height: 1.45; }
-.topic-input:focus, .topic-select:focus, textarea:focus { border-color: #8b5cf6; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.13); }
+.start-label { color: #4a3929; font-weight: 900; font-size: 0.9rem; margin: 0; }
+.start-help { margin: -4px 2px 2px; color: #7d6e61; font-size: 0.88rem; line-height: 1.45; }
+textarea:focus { border-color: #8b5cf6; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.13); }
 .primary-button, .secondary-button, .ghost-button { border-radius: 999px; padding: 13px 18px; font-weight: 800; transition: transform 160ms ease, box-shadow 160ms ease; }
 .primary-button { color: white; background: linear-gradient(135deg, #7c3aed, #a855f7); box-shadow: 0 12px 28px rgba(124, 58, 237, 0.26); }
 .secondary-button { color: #3b2615; background: #f4c979; box-shadow: 0 10px 24px rgba(196, 138, 44, 0.2); }
@@ -137,3 +135,159 @@ details.reveal summary { cursor: pointer; font-weight: 850; color: #5b21b6; }
 .activity-row.failed .step-status { background: #fee2e2; color: #991b1b; }
 .activity-history { margin-bottom: 16px; }
 .activity-row { margin: 9px 0 0; line-height: 1.5; }
+
+/* Teacher-guided active card refinements */
+.card-stack {
+  gap: 10px;
+}
+
+.collapsed-card-stack {
+  display: grid;
+  gap: 8px;
+  margin-top: -2px;
+  padding: 0 10px;
+}
+
+.stack-preview {
+  position: relative;
+  min-height: 74px;
+  padding: 13px 16px;
+  border: 1px solid rgba(91, 63, 35, 0.1);
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.92), rgba(248, 241, 232, 0.86));
+  box-shadow: 0 10px 22px rgba(65, 44, 23, 0.08);
+}
+
+.stack-preview + .stack-preview {
+  margin-top: -2px;
+}
+
+.stack-preview.locked {
+  background: rgba(246, 239, 229, 0.72);
+}
+
+.preview-card-number {
+  display: inline-flex;
+  margin-right: 8px;
+  color: #8a7a6a;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.learning-card {
+  position: relative;
+  z-index: 1;
+  border: 2px solid rgba(124, 58, 237, 0.12);
+}
+
+.score-chip {
+  opacity: 0.72;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.teacher-feedback {
+  gap: 10px;
+}
+
+.teacher-panel,
+.teacher-row.your-answer,
+.teacher-row.main-fix,
+.teacher-row.better-answer {
+  background: #fffaf2;
+}
+
+.teacher-row.your-answer {
+  border-left: 4px solid #d6b27a;
+}
+
+.teacher-panel {
+  background: #fff7ea;
+}
+
+.teacher-diagnosis {
+  display: grid;
+  gap: 10px;
+}
+
+.teacher-diagnosis > div {
+  padding: 13px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(90, 61, 32, 0.07);
+}
+
+.teacher-diagnosis p {
+  margin: 7px 0 0;
+  line-height: 1.55;
+}
+
+.main-fix {
+  border-left: 4px solid #f59e0b;
+}
+
+.better-answer {
+  border-left: 4px solid #22c55e;
+}
+
+.advanced-details {
+  margin-top: 2px;
+}
+
+.retry-area {
+  border: 2px solid rgba(124, 58, 237, 0.16);
+}
+
+.retry-area .kicker::after {
+  content: ' → teacher diagnosis → retry';
+  color: #8a6d3b;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 800;
+}
+
+@media (min-width: 760px) {
+  .teacher-diagnosis {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.source-article-reveal {
+  margin-bottom: 14px;
+}
+
+.source-article-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.source-article h2 {
+  margin: 4px 0 2px;
+  font-size: clamp(1rem, 3vw, 1.25rem);
+  line-height: 1.25;
+}
+
+.source-link {
+  flex: 0 0 auto;
+  color: #6d28d9;
+  background: #f1e8ff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.article-body-text {
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.65;
+  color: #3f3023;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(90, 61, 32, 0.07);
+  border-radius: 18px;
+  padding: 14px;
+}

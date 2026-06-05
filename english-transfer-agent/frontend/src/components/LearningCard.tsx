@@ -28,9 +28,9 @@ function statusLabel(state: CardInteractionState) {
 
   if (!evaluation.targetUsed) return 'Target missing';
   if (evaluation.nextAction === 'try_again' || evaluation.nextAction === 'micro_lesson' || evaluation.nextAction === 'give_hint') return 'Needs retry';
-  if (evaluation.nextAction === 'follow_up_question') return 'Almost there';
+  if (evaluation.nextAction === 'follow_up_question') return 'Needs retry';
   if (evaluation.targetUsageQuality === 'excellent' || evaluation.targetUsageQuality === 'good') return 'Good transfer';
-  return 'Almost there';
+  return 'Needs retry';
 }
 
 function submitLabel(state: CardInteractionState) {
@@ -69,7 +69,8 @@ export default function LearningCardView({
   const showAnswerBox = canRetry(state) && !isPassed;
   const showInitialAnswerBox = showAnswerBox && !latestEvaluation;
   const showRetryAnswerBox = showAnswerBox && Boolean(latestEvaluation);
-  const retryPrompt = latestEvaluation?.followUpPromptChinese || latestEvaluation?.retryPromptChinese || state.currentPromptChinese;
+  const latestAttempt = state.attempts[state.attempts.length - 1];
+  const retryPrompt = latestEvaluation?.retryPromptChinese || latestEvaluation?.followUpPromptChinese || state.currentPromptChinese;
 
   return (
     <article className="learning-card">
@@ -109,12 +110,14 @@ export default function LearningCardView({
         </section>
       )}
 
-      {latestEvaluation && <TeacherFeedback evaluation={latestEvaluation} target={card.target} />}
+      {latestEvaluation && latestAttempt && (
+        <TeacherFeedback evaluation={latestEvaluation} target={card.target} userAnswer={latestAttempt.userAnswer} />
+      )}
 
       {showRetryAnswerBox && (
         <section className="retry-area" aria-label="Try again or answer the follow-up">
           <div className="retry-copy">
-            <div className="kicker">Try again / Follow-up</div>
+            <div className="kicker">Try again</div>
             {retryPrompt && <p>{retryPrompt}</p>}
             {latestEvaluation?.sentenceFrame && <div className="frame">Sentence frame: {latestEvaluation.sentenceFrame}</div>}
           </div>
@@ -128,7 +131,7 @@ export default function LearningCardView({
             onClick={() => onSubmit(card.id)}
             disabled={isSubmitting || !state.currentAnswer.trim()}
           >
-            {isSubmitting ? 'Evaluating…' : submitLabel(state)}
+            {isSubmitting ? 'Evaluating…' : 'Submit again'}
           </button>
         </section>
       )}

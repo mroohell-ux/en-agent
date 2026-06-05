@@ -53,9 +53,18 @@ export type AnswerEvaluation = {
   nextAction: NextAction;
 };
 
+export type SourceArticle = {
+  title: string;
+  url: string;
+  content: string;
+  snippet: string;
+  site: string;
+};
+
 export type StartResponse = {
   sessionId: string;
   cards: LearningCard[];
+  sourceArticles?: SourceArticle[];
 };
 
 export type RoundSummary = {
@@ -67,6 +76,9 @@ export type RoundSummary = {
 };
 
 const API_BASE = (import.meta as ImportMeta & { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? 'http://localhost:8000';
+const REQUEST_LOG_STYLE = 'color: #dc2626; font-weight: 900;';
+const RESPONSE_LOG_STYLE = 'color: #16a34a; font-weight: 800;';
+const ERROR_LOG_STYLE = 'color: #b91c1c; font-weight: 900;';
 
 export type ApiErrorDetail = {
   step?: string;
@@ -114,23 +126,54 @@ async function readErrorDetail(res: Response): Promise<ApiErrorDetail> {
 }
 
 async function postJson<TResponse, TBody extends Record<string, unknown>>(path: string, body: TBody): Promise<TResponse> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = `${API_BASE}${path}`;
+  const requestPayload = JSON.stringify(body);
+
+  console.debug('%c[agent-api] REQUEST sending', REQUEST_LOG_STYLE, {
+    method: 'POST',
+    path,
+    url,
+    headers: { 'Content-Type': 'application/json' },
+    payload: body,
+    serializedPayload: requestPayload,
+  });
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: requestPayload,
   });
 
   if (!res.ok) {
     const detail = await readErrorDetail(res);
+    console.error('%c[agent-api] REQUEST failed', ERROR_LOG_STYLE, {
+      method: 'POST',
+      path,
+      url,
+      status: res.status,
+      statusText: res.statusText,
+      requestPayload: body,
+      errorDetail: detail,
+    });
     throw new ApiRequestError(`Request failed (${res.status}) for ${path}`, detail);
   }
 
-  return res.json();
+  const responsePayload = (await res.json()) as TResponse;
+  console.debug('%c[agent-api] RESPONSE received', RESPONSE_LOG_STYLE, {
+    method: 'POST',
+    path,
+    url,
+    status: res.status,
+    statusText: res.statusText,
+    requestPayload: body,
+    responsePayload,
+  });
+
+  return responsePayload;
 }
 
-export function startAgent(topic: string) {
+export function startAgent() {
   return postJson<StartResponse, Record<string, unknown>>('/agent/start', {
-    topic,
     userId: 'default-user',
   });
 }

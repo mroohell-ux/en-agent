@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
 
 from app.db.store import get_conn
+from app.providers.search import normalize_article_url
+from app.logging_utils import color_request_log
 from app.prompts.card_generation import build_card_generation_prompt
 from app.prompts.evaluation import build_evaluation_prompt
 from app.prompts.round_summary import build_round_summary_prompt
@@ -27,19 +30,48 @@ REQUIRED_CARD_FIELDS = {
 }
 
 
-def build_search_query(state, deps):
-    topic = state["topic"]
-    topic_text = "science culture technology psychology lifestyle" if topic == "random" else topic
-    query = (
-        f"engaging real-world feature article or essay about {topic_text}; "
-        "ordinary educated readers; useful language patterns; not ESL or simplified learner material"
+def _normalize_text_for_matching(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
+
+
+def _is_exact_article_excerpt(excerpt: str, search_results: list[dict]) -> bool:
+    normalized_excerpt = _normalize_text_for_matching(excerpt)
+    if not normalized_excerpt:
+        return False
+
+    return any(
+        normalized_excerpt in _normalize_text_for_matching(str(result.get("content", "")))
+        for result in search_results
     )
+
+
+def _same_text(left: str, right: str) -> bool:
+    return _normalize_text_for_matching(left) == _normalize_text_for_matching(right)
+
+
+def build_search_query(state, deps):
+    query = (
+        "feature article for general readers; "
+        "science culture technology psychology lifestyle arts food sports stories; "
+        "real-world publication with clear useful language"
+    )
+    logger.debug("Built search query level=%s query=%s", state.get("level"), query)
     return {"search_query": query}
 
 
 def search_material_with_tavily(state, deps):
-    results = deps.search_provider.search(state["search_query"], max_results=5)
+    max_results = 1
+    excluded_urls = _used_article_urls(state.get("user_id"))
+    logger.info(
+        color_request_log("Search provider request -> %s query=%s max_results=%s excluded_urls=%s"),
+        deps.search_provider.__class__.__name__,
+        state["search_query"],
+        max_results,
+        len(excluded_urls),
+    )
+    results = deps.search_provider.search(state["search_query"], max_results=max_results, excluded_urls=excluded_urls)
     search_results = [r.model_dump() for r in results]
+    logger.debug("Search provider response payload=%s", search_results)
     dump_path = _dump_search_material(state, search_results)
     logger.info("Saved raw search material to %s", dump_path)
     return {"search_results": search_results, "search_dump_path": str(dump_path)}
@@ -51,12 +83,17 @@ def generate_learning_cards(state, deps):
         level=state["level"],
         search_results=state.get("search_results", []),
     )
+    logger.info(color_request_log("AI provider request -> %s operation=generate_cards prompt_chars=%s"), deps.ai_provider.__class__.__name__, len(prompt))
+    logger.debug(color_request_log("Card generation prompt payload=%s"), prompt)
     card_set = deps.ai_provider.generate_cards(prompt)
-    return {"cards": [c.model_dump() for c in card_set.cards]}
+    cards = [c.model_dump() for c in card_set.cards]
+    logger.debug("AI provider generate_cards response payload=%s", cards)
+    return {"cards": cards}
 
 
 def validate_cards(state, deps):
     valid_cards: list[dict] = []
+    search_results = state.get("search_results", [])
     for card in state.get("cards", []):
         if len(valid_cards) >= 10:
             break
@@ -64,9 +101,21 @@ def validate_cards(state, deps):
             continue
         if not str(card.get("target", "")).strip() or not str(card.get("chinesePrompt", "")).strip():
             continue
+
+        original_reference = str(card.get("originalReference", ""))
+        expected_answer = str(card.get("expectedAnswer", ""))
+        if not _is_exact_article_excerpt(original_reference, search_results):
+            logger.warning("Rejected card because originalReference is not an exact article excerpt title=%s", card.get("title"))
+            continue
+
+        if not _same_text(expected_answer, original_reference):
+            logger.warning("Adjusted card expectedAnswer to exact originalReference title=%s", card.get("title"))
+            card = dict(card)
+            card["expectedAnswer"] = original_reference
+
         valid_cards.append(card)
     if not valid_cards:
-        raise HTTPException(status_code=400, detail="No valid cards generated")
+        raise HTTPException(status_code=400, detail="No valid cards generated from exact article excerpts")
     return {"filtered_cards": valid_cards}
 
 
@@ -97,9 +146,55 @@ def save_session_and_cards(state, deps):
             ),
         )
         saved_cards.append(card_to_save)
+    _remember_article_sources(cur, state, saved_cards)
     conn.commit()
     conn.close()
     return {"cards": saved_cards, "filtered_cards": saved_cards}
+
+
+def _used_article_urls(user_id: str | None) -> set[str]:
+    if not user_id:
+        return set()
+
+    conn = get_conn()
+    cur = conn.cursor()
+    rows = cur.execute("SELECT source_url FROM article_sources WHERE user_id=?", (user_id,)).fetchall()
+    conn.close()
+    return {row["source_url"] for row in rows if row["source_url"]}
+
+
+def _remember_article_sources(cur, state: dict, saved_cards: list[dict]) -> None:
+    urls_by_title: dict[str, str] = {}
+
+    for result in state.get("search_results", []):
+        url = result.get("url")
+        if url:
+            urls_by_title[url] = result.get("title", "")
+
+    for card in saved_cards:
+        source = card.get("source") or {}
+        url = source.get("url")
+        if url:
+            urls_by_title[url] = source.get("title") or card.get("title") or urls_by_title.get(url, "")
+
+    for url, title in urls_by_title.items():
+        normalized_url = normalize_article_url(url)
+        if not normalized_url:
+            continue
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO article_sources (user_id,session_id,topic,source_url,source_title,used_at)
+            VALUES (?,?,?,?,?,?)
+            """,
+            (
+                state.get("user_id"),
+                state.get("session_id"),
+                state.get("topic"),
+                normalized_url,
+                title,
+                datetime.utcnow().isoformat(),
+            ),
+        )
 
 
 def load_session_and_card(state, deps):
@@ -120,7 +215,10 @@ def load_session_and_card(state, deps):
 
 def evaluate_answer(state, deps):
     prompt = build_evaluation_prompt(state["current_card"], state["user_answer"])
+    logger.info(color_request_log("AI provider request -> %s operation=evaluate_answer session=%s card=%s prompt_chars=%s"), deps.ai_provider.__class__.__name__, state.get("session_id"), state.get("card_id"), len(prompt))
+    logger.debug(color_request_log("Evaluation prompt payload=%s"), prompt)
     evaluation = deps.ai_provider.evaluate_answer(prompt).model_dump()
+    logger.debug("AI provider evaluate_answer response payload=%s", evaluation)
     if state.get("is_last_card") and evaluation.get("targetUsed") and int(evaluation.get("score", 0) or 0) >= 80:
         evaluation["nextAction"] = "finish_round"
         evaluation["followUpPromptChinese"] = None
@@ -190,8 +288,12 @@ def load_round_data(state, deps):
 
 def summarize_round(state, deps):
     prompt = build_round_summary_prompt(state["round_data"])
+    logger.info(color_request_log("AI provider request -> %s operation=summarize_round session=%s prompt_chars=%s"), deps.ai_provider.__class__.__name__, state.get("session_id"), len(prompt))
+    logger.debug(color_request_log("Round summary prompt payload=%s"), prompt)
     summary = deps.ai_provider.summarize_round(prompt)
-    return {"round_summary": summary.model_dump()}
+    summary_payload = summary.model_dump()
+    logger.debug("AI provider summarize_round response payload=%s", summary_payload)
+    return {"round_summary": summary_payload}
 
 
 def save_round_summary(state, deps):

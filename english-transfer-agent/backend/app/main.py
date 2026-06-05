@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.store import init_db
+from app.logging_utils import color_request_log
 from app.providers.ai import build_ai_provider
 from app.providers.search import build_search_provider
 from app.schemas import AnswerRequest, FinishRequest, StartRequest
@@ -15,7 +17,21 @@ from app.services.agent_service import AgentService
 
 load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+logging.getLogger("httpx").setLevel(os.getenv("HTTPX_LOG_LEVEL", "WARNING").upper())
+logging.getLogger("httpcore").setLevel(os.getenv("HTTPCORE_LOG_LEVEL", "WARNING").upper())
 logger = logging.getLogger(__name__)
+
+
+def _request_payload(req: Any) -> dict[str, Any]:
+    if hasattr(req, "model_dump"):
+        return req.model_dump()
+    return dict(req)
+
+
+def _log_api_request(path: str, req: Any) -> None:
+    payload = _request_payload(req)
+    logger.info(color_request_log("POST %s -> AgentService payload=%s"), path, payload)
+    logger.debug(color_request_log("POST %s request payload detail=%s"), path, payload)
 
 
 def _get_cors_origins() -> list[str]:
@@ -51,17 +67,17 @@ def startup() -> None:
 
 @app.post("/agent/start")
 def start_agent(req: StartRequest):
-    logger.info("POST /agent/start topic=%s level=%s user=%s", req.topic, req.level, req.userId)
+    _log_api_request("/agent/start", req)
     return agent_service.start(req)
 
 
 @app.post("/agent/answer")
 def answer_agent(req: AnswerRequest):
-    logger.info("POST /agent/answer session=%s card=%s attempt=%s", req.sessionId, req.cardId, req.attemptNumber)
+    _log_api_request("/agent/answer", req)
     return agent_service.answer(req)
 
 
 @app.post("/agent/finish")
 def finish_agent(req: FinishRequest):
-    logger.info("POST /agent/finish session=%s", req.sessionId)
+    _log_api_request("/agent/finish", req)
     return agent_service.finish(req)

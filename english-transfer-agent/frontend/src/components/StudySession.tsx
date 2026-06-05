@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ApiRequestError, answer, finishRound, type AnswerEvaluation, type LearningCard, type NextAction, type RoundSummary } from '../api/agentClient';
+import { ApiRequestError, answer, finishRound, type AnswerEvaluation, type LearningCard, type NextAction, type RoundSummary, type SourceArticle } from '../api/agentClient';
 import CardStack from './CardStack';
 import RoundSummaryCard from './RoundSummaryCard';
+import SourceArticleReveal from './SourceArticleReveal';
 
 export type CardStatus = 'not_started' | 'answering' | 'feedback' | 'retrying' | 'passed';
 
@@ -40,6 +41,7 @@ function formatError(err: unknown, fallbackStep: string) {
 type Props = {
   sessionId: string;
   cards: LearningCard[];
+  sourceArticles: SourceArticle[];
   onStartAnotherRound: () => void;
 };
 
@@ -73,7 +75,7 @@ function createInitialCardStates(cards: LearningCard[]) {
   }, {});
 }
 
-export default function StudySession({ sessionId, cards, onStartAnotherRound }: Props) {
+export default function StudySession({ sessionId, cards, sourceArticles, onStartAnotherRound }: Props) {
   const [cardStates, setCardStates] = useState(() => createInitialCardStates(cards));
   const [activeIndex, setActiveIndex] = useState(0);
   const [submittingCardId, setSubmittingCardId] = useState<string | null>(null);
@@ -178,6 +180,7 @@ export default function StudySession({ sessionId, cards, onStartAnotherRound }: 
   return (
     <section aria-label="Stacked learning cards">
       {error && <div className="loading-card">{error}</div>}
+      <SourceArticleReveal articles={sourceArticles} />
       <CardStack
         cards={cards}
         cardStates={cardStates}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from abc import ABC, abstractmethod
@@ -9,6 +10,7 @@ from typing import Any, Callable, TypeVar
 import httpx
 from pydantic import BaseModel
 
+from app.logging_utils import color_request_log
 from app.schemas import (
     AnswerEvaluation,
     CardSource,
@@ -19,6 +21,25 @@ from app.schemas import (
     PracticedItem,
     RoundSummary,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+def _redact_sensitive_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, nested_value in value.items():
+            if str(key).lower() in {"api_key", "authorization"}:
+                redacted[key] = "[REDACTED]"
+            else:
+                redacted[key] = _redact_sensitive_payload(nested_value)
+        return redacted
+
+    if isinstance(value, list):
+        return [_redact_sensitive_payload(item) for item in value]
+
+    return value
 
 
 class AiProvider(ABC):
@@ -216,20 +237,39 @@ class OpenAiCompatibleProvider(AiProvider):
         if response_format is not None:
             payload["response_format"] = response_format
 
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        logger.info(
+            color_request_log("AI HTTP request -> url=%s provider=%s model=%s schema=%s"),
+            url,
+            self.__class__.__name__,
+            self.model,
+            schema_name,
+        )
+        logger.debug(
+            color_request_log("AI HTTP request payload=%s headers=%s"),
+            _redact_sensitive_payload(payload),
+            _redact_sensitive_payload(headers),
+        )
+
         response = httpx.post(
-            f"{self.base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            url,
+            headers=headers,
             json=payload,
             timeout=self.timeout,
         )
+        logger.info("AI HTTP response <- url=%s status=%s schema=%s", url, response.status_code, schema_name)
         response.raise_for_status()
         data = response.json()
+        logger.debug("AI HTTP response payload=%s", data)
         content = data["choices"][0]["message"]["content"]
+        logger.debug("AI message content for schema=%s payload=%s", schema_name, content)
         parsed = self._parse_json_content(content)
         parsed = _normalize_schema_payload(schema_model, parsed)
+        logger.debug("AI parsed normalized payload for schema=%s payload=%s", schema_name, parsed)
         return schema_model.model_validate(parsed)
 
     @staticmethod

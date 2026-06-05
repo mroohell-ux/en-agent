@@ -88,7 +88,6 @@ class RoundSummary(BaseModel):
 
 
 class StartRequest(BaseModel):
-    topic: Literal["random", "technology", "culture", "science", "psychology", "lifestyle"] = "random"
     level: str = "B2-C1"
     userId: str = "default-user"
 
@@ -96,6 +95,7 @@ class StartRequest(BaseModel):
 class StartResponse(BaseModel):
     sessionId: str
     cards: list[LearningCard]
+    sourceArticles: list[SearchResult] = Field(default_factory=list)
 
 
 class AnswerRequest(BaseModel):
